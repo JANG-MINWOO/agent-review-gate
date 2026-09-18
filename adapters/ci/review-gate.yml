@@ -1,0 +1,20 @@
+name: review-gate
+on: [pull_request]
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci --ignore-scripts || npm i --ignore-scripts
+      - name: test-integrity lint (blocks on hard signals)
+        run: npx --no-install review-gate lint-tests --base origin/${{ github.base_ref }} --head HEAD
+      - name: red→green (needs testCmd in .review-gate/config.json)
+        run: |
+          TC=$(node -e "try{console.log(require('./.review-gate/config.json').testCmd||'')}catch{console.log('')}")
+          if [ -n "$TC" ]; then npx --no-install review-gate red-green --base origin/${{ github.base_ref }} --head HEAD --test-cmd "$TC"; else echo "no testCmd configured — skipped"; fi
+      # Model review in CI needs a reviewer CLI + credentials (ANTHROPIC_API_KEY / OPENAI_API_KEY). Enable when you have them:
+      # - run: npx --no-install review-gate review --base origin/${{ github.base_ref }} --head HEAD --block
+      #   env: { ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }} }

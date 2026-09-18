@@ -1,0 +1,12 @@
+{
+  "name": "agent-review-gate",
+  "version": "0.1.0",
+  "description": "Independent code review by a fresh CLI session (claude -p / codex exec) plus deterministic TDD gates: test-integrity lint, red→green verifier, test-file lock. Zero dependencies.",
+  "bin": { "review-gate": "bin/review-gate.js" },
+  "files": ["bin", "src", "lib", "adapters", "README.md", "LICENSE"],
+  "scripts": { "test": "node --test tests/*.test.js" },
+  "engines": { "node": ">=18.11" },
+  "keywords": ["code-review", "claude-code", "codex", "tdd", "hooks", "quality-gate"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/JANG-MINWOO/agent-review-gate" }
+}

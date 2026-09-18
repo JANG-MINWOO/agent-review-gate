@@ -1,0 +1,59 @@
+'use strict';
+// `review-gate review` — builds the packet, runs the deterministic checks, runs the reviewer, appends the ledger.
+// Ledger: <repo>/.review-gate/reviews.jsonl (append-only; commit it — it is how you later count which findings were real).
+// Runs:   <repo>/.review-gate/runs/<ts>-<sha>/{packet.md,raw.txt,verdict.json} (gitignored audit trail).
+const fs = require('node:fs'), path = require('node:path');
+const { repoRoot, resolveRange, headSha, git } = require('./git');
+const { lintTests } = require('./lint');
+const { redGreen } = require('./redgreen');
+const { pickReviewer, buildPacket, extractJson, runClaude, runCodex } = require('./reviewer');
+
+const stamp = () => new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');
+function review(o) {
+  const repo = repoRoot(o.repo || '.');
+  let [base, head] = resolveRange(repo, o.base, o.head);
+  if (o.worktree && head === 'HEAD') head = 'WORKTREE';
+  const reviewer = pickReviewer(o.reviewer || 'auto', o.author || 'claude');
+  const checks = {};
+  if (!o.noLint) checks.test_integrity = lintTests(repo, base, head);
+  if (o.testCmd) { const rg = redGreen(repo, base, head, o.testCmd); checks.red_green = Object.fromEntries(Object.entries(rg).filter(([k]) => !k.endsWith('_tail'))); }
+  const intent = o.intent ? fs.readFileSync(o.intent, 'utf8') : (o.intentText || null);
+  const { packet, meta: pmeta } = buildPacket(repo, base, head, intent, checks, o.maxDiffChars || 120000);
+  if (pmeta.files === 0) return { skipped: 'empty diff', code: 0 };
+  const home = o.out ? path.resolve(o.out) : path.join(repo, '.review-gate');   // --out: keep ledger+runs outside the reviewed repo (pilots, CI artifacts)
+  const runDir = path.join(home, 'runs', `${stamp()}-${headSha(repo, head)}`); fs.mkdirSync(runDir, { recursive: true });
+  fs.writeFileSync(path.join(runDir, 'packet.md'), packet);
+  const t0 = Date.now();
+  const r = reviewer === 'claude' ? runClaude(repo, packet, o) : runCodex(repo, packet, o);
+  const duration = (Date.now() - t0) / 1000;
+  fs.writeFileSync(path.join(runDir, 'raw.txt'), r.raw);
+  if (reviewer === 'codex' && (o.sandbox || 'read-only') !== 'read-only') git(['checkout', '--', '.'], repo);   // the reviewer must not leave edits behind
+  let verdict;
+  try { verdict = extractJson(r.text); } catch (e) { return { error: `reviewer (${reviewer}) returned no parsable verdict (rc=${r.code}): ${e.message}`, tail: (r.text || '').slice(-800), code: 1, runDir }; }
+  verdict.findings = verdict.findings || []; verdict.good = verdict.good || []; verdict.checked = verdict.checked || [];
+  if (!['pass', 'fail', 'unsure'].includes(verdict.verdict)) verdict.verdict = 'unsure';
+  const rec = {
+    ts: new Date().toISOString(), repo: path.basename(repo), base, head, head_sha: headSha(repo, head), reviewer, author: o.author || 'claude', mode: o.reviewer || 'auto',
+    meta: r.meta, duration_s: duration, packet: pmeta, checks, verdict: verdict.verdict, summary: verdict.summary || '',
+    n_fact: verdict.findings.filter(f => f.kind === 'fact').length, n_taste: verdict.findings.filter(f => f.kind === 'taste').length,
+    findings: verdict.findings, good: verdict.good, checked: verdict.checked, run_dir: path.relative(home, runDir), label: o.label || '',
+  };
+  const led = home; fs.mkdirSync(led, { recursive: true });
+  const gi = path.join(led, '.gitignore'); if (!fs.existsSync(gi)) fs.writeFileSync(gi, 'runs/\nphase\n');
+  fs.appendFileSync(path.join(led, 'reviews.jsonl'), JSON.stringify(rec) + '\n');
+  fs.writeFileSync(path.join(runDir, 'verdict.json'), JSON.stringify(verdict, null, 1));
+  const blocking = verdict.verdict === 'fail' || (checks.test_integrity && checks.test_integrity.level === 'hard') || (checks.red_green && ['not-red', 'not-green'].includes(checks.red_green.verdict));
+  return { rec, verdict, blocking, code: o.block && blocking ? 2 : 0, runDir };
+}
+function format(res) {
+  if (res.skipped) return `review-gate: nothing to review (${res.skipped})`;
+  if (res.error) return `review-gate: ${res.error}\n${res.tail || ''}`;
+  const { rec, verdict } = res; const mark = { pass: '✅', fail: '❌', unsure: '❓' }[verdict.verdict];
+  const lines = [`${mark} review-gate [${rec.reviewer}${rec.meta && rec.meta.model ? ' ' + rec.meta.model : ''}] ${verdict.verdict.toUpperCase()} — ${verdict.summary} (${rec.duration_s.toFixed(0)}s, ${rec.n_fact} fact / ${rec.n_taste} taste)`];
+  for (const f of verdict.findings) lines.push(`  [${f.severity || '?'}/${f.kind || '?'}] ${f.file || ''}:${f.line || ''} — ${f.claim || ''}` + (f.evidence ? `\n      evidence: ${f.evidence}` : '') + (f.suggestion ? `\n      → ${f.suggestion}` : ''));
+  for (const g of verdict.good.slice(0, 3)) lines.push(`  👍 ${g}`);
+  const ti = rec.checks.test_integrity; if (ti && ti.findings.length) lines.push('  test-integrity: ' + ti.findings.map(x => `${x.level} ${x.file}: ${x.msg}`).join('; '));
+  const rg = rec.checks.red_green; if (rg) lines.push(`  red→green: ${rg.verdict} — ${rg.note || ''}`);
+  return lines.join('\n');
+}
+module.exports = { review, format };

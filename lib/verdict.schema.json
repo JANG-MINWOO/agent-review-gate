@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "review-gate verdict",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "summary", "findings", "good", "checked"],
+  "properties": {
+    "verdict": {"type": "string", "enum": ["pass", "fail", "unsure"]},
+    "summary": {"type": "string"},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "kind", "file", "line", "claim", "evidence", "suggestion"],
+        "properties": {
+          "severity": {"type": "string", "enum": ["high", "medium", "low"]},
+          "kind": {"type": "string", "enum": ["fact", "taste"]},
+          "file": {"type": "string"},
+          "line": {"type": "integer"},
+          "claim": {"type": "string"},
+          "evidence": {"type": "string"},
+          "suggestion": {"type": "string"}
+        }
+      }
+    },
+    "good": {"type": "array", "items": {"type": "string"}},
+    "checked": {"type": "array", "items": {"type": "string"}}
+  }
+}
