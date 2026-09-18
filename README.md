@@ -104,7 +104,7 @@ npx review-gate red-green --test-cmd "pytest -q"
 npx review-gate phase implement              # lock tests; `phase test` to unlock
 ```
 
-`init` is idempotent — run it again after `npm update agent-review-gate`.
+`init` is idempotent — run it again after `npm update agent-review-gate`. **Restart Claude Code after `init`** — hooks and slash commands are read at session start (`/hooks` should list the two review-gate entries).
 
 **Nested layout (context repo above the code repo).** If you run Claude Code from a parent directory that holds your
 notes/wiki and the code lives in a subfolder that is its own git repo (`my-context/my-app`), install the package in the
