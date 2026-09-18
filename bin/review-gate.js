@@ -71,7 +71,7 @@ function opts() {
       console.log(JSON.stringify({ installed: have, author, auto_pick: pick, codex_sandbox: have.codex ? (sb ? { ok: false, error: sb, fix: 'set "codexSandbox": "danger-full-access" in .review-gate/config.json, or rely on auto fallback to claude' } : { ok: true }) : null }, null, 1));
       if (v.ask) for (const name of Object.keys(have).filter(k => have[k])) {
         const t0 = Date.now();
-        const p = name === 'claude' ? run('claude', ['-p', 'reply with the single word ok', '--strict-mcp-config', '--setting-sources', '', '--no-session-persistence', '--tools', '', '--max-turns', '1', '--output-format', 'json', ...(v.model ? ['--model', v.model] : [])], { timeout: 120000 })
+        const p = name === 'claude' ? run('claude', ['-p', 'reply with the single word ok', '--strict-mcp-config', '--setting-sources', 'user', '--no-session-persistence', '--tools', '', '--max-turns', '1', '--output-format', 'json', ...(v.model ? ['--model', v.model] : [])], { timeout: 120000 })
           : run('codex', ['exec', '--skip-git-repo-check', '-s', 'read-only', ...(v.model ? ['-m', v.model] : []), 'reply with the single word ok'], { timeout: 180000 });
         console.log(`  ${name}: rc=${p.code} ${((Date.now() - t0) / 1000).toFixed(1)}s ${/\bok\b/i.test(p.out + p.err) ? 'answered' : 'no answer'}`);
       }

@@ -41,12 +41,13 @@ function extractJson(text) {
   return JSON.parse(t.slice(s, e + 1));
 }
 
-// The reviewer process gets none of the author's context: `--setting-sources ""` loads no settings, no hooks and no CLAUDE.md (verified
-// 2026-09-18: with `project` the reviewer read the repo's review-gate rules, tried to run the review itself and hit the Stop gate);
-// REVIEW_GATE_ROLE=reviewer makes our own hooks stand down if a user-level settings file still wires them.
+// The reviewer process gets none of the author's project context: `--setting-sources user` loads the user's own settings (auth env,
+// proxy, model defaults) but no project settings, hooks, commands or CLAUDE.md (verified 2026-09-18: with `project` the reviewer read
+// the repo's review-gate rules, tried to run the review itself and hit the Stop gate; `user` and "" both leave CLAUDE.md out).
+// REVIEW_GATE_ROLE=reviewer makes our own hooks stand down if a user-level settings file wires them.
 const reviewerEnv = () => Object.assign({}, process.env, { REVIEW_GATE_ROLE: 'reviewer' });
 function runClaude(repo, packet, o) {
-  const args = ['-p', '--output-format', 'json', '--strict-mcp-config', '--setting-sources', '', '--no-session-persistence',
+  const args = ['-p', '--output-format', 'json', '--strict-mcp-config', '--setting-sources', 'user', '--no-session-persistence',
     '--system-prompt', fs.readFileSync(RUBRIC, 'utf8'), '--max-turns', String(o.maxTurns || 25), '--allowedTools', o.allowedTools, ...(o.model ? ['--model', o.model] : []), ...(o.extra || [])];
   const p = run('claude', args, { cwd: repo, input: packet, timeout: (o.timeoutSec || 1800) * 1000, env: reviewerEnv() });
   let text = p.out, meta = {};

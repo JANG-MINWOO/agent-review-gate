@@ -102,10 +102,10 @@ review inline; `"off"` disables it.
    exit 0 (pass/unsure) · exit 2 (fail / hard lint / not-red|not-green) when --block or config.block
 ```
 
-**The reviewer process is sealed off from the author's context.** It is started with `--setting-sources ""` (no settings, no hooks,
-no CLAUDE.md — verified: with `project` sources the reviewer read the repository's own review-gate rules, tried to "run the review
-before finishing" and hit the Stop gate itself) and with `REVIEW_GATE_ROLE=reviewer`, which makes the guard and Stop hooks stand
-down if a user-level settings file still wires them. It may run the project's test command (and the usual runners) but nothing else
+**The reviewer process is sealed off from the author's project context.** It is started with `--setting-sources user` (your own
+user settings — auth, proxy, model defaults — but no project settings, hooks, slash commands or CLAUDE.md; verified: with `project`
+sources the reviewer read the repository's own review-gate rules, tried to "run the review before finishing" and hit the Stop gate
+itself) and with `REVIEW_GATE_ROLE=reviewer`, which makes the guard and Stop hooks stand down if a user-level settings file wires them. It may run the project's test command (and the usual runners) but nothing else
 that writes. Untracked files are part of a worktree review — a backfill of brand-new test files reaches the reviewer as creation
 diffs, not as an empty packet. A reviewer whose environment failed (Codex's Linux sandbox refusing to start, for example) is
 recorded as an error, never as a verdict; in `auto` mode the other CLI is tried once, otherwise the fix is printed.
