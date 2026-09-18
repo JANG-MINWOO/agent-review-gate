@@ -59,6 +59,7 @@ function runClaude(repo, packet, o) {
 // just writes "unsure". Probing first costs ~1s and no model call.
 function codexSandboxError(sandbox) {
   if (sandbox === 'danger-full-access') return null;
+  if (process.platform !== 'linux') return null;   // the failure this guards against is bubblewrap on Linux; macOS seatbelt needs no probe — probing there risked demoting a working Codex
   const p = run('codex', ['sandbox', '--', 'true'], { timeout: 30000 });
   if (p.code === 0) return null;
   // Only a recognisable sandbox failure counts. An unknown subcommand (older codex), a usage error or a platform quirk must not
