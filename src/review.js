@@ -3,7 +3,7 @@
 // Ledger: <repo>/.review-gate/reviews.jsonl (append-only; commit it — it is how you later count which findings were real).
 // Runs:   <repo>/.review-gate/runs/<ts>-<sha>/{packet.md,raw.txt,verdict.json} (gitignored audit trail).
 const fs = require('node:fs'), path = require('node:path');
-const { repoRoot, resolveRange, headSha, git, worktreeDiffHash } = require('./git');
+const { repoRoot, resolveRange, headSha, worktreeDiffHash, protectTree } = require('./git');
 const { lintTests } = require('./lint');
 const { redGreen } = require('./redgreen');
 const { pickReviewer, buildPacket, extractJson, runClaude, runCodex, environmentFailure, detectClis } = require('./reviewer');
@@ -24,10 +24,12 @@ function review(o) {
   const runDir = path.join(home, 'runs', `${stamp()}-${headSha(repo, head)}`); fs.mkdirSync(runDir, { recursive: true });
   fs.writeFileSync(path.join(runDir, 'packet.md'), packet);
   const t0 = Date.now();
+  const restore = (reviewer === 'codex' && (o.sandbox || 'read-only') !== 'read-only') ? protectTree(repo) : null;   // a writable reviewer must not leave edits behind — and must not cost the author theirs
   const r = reviewer === 'claude' ? runClaude(repo, packet, o) : runCodex(repo, packet, o);
   const duration = (Date.now() - t0) / 1000;
   fs.writeFileSync(path.join(runDir, 'raw.txt'), r.raw);
-  if (reviewer === 'codex' && (o.sandbox || 'read-only') !== 'read-only') git(['checkout', '--', '.'], repo);   // the reviewer must not leave edits behind
+  const undone = restore ? restore() : [];
+  if (undone.length) r.raw += '\n--- reviewer edits undone ---\n' + undone.join('\n');
   let verdict;
   if (r.meta && r.meta.env_fail) verdict = { verdict: 'unsure', summary: r.meta.env_fail, findings: [] };   // pre-flight failed: handled below as an environment failure
   else try { verdict = extractJson(r.text); } catch (e) {

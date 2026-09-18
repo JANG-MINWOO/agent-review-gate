@@ -81,4 +81,22 @@ function worktreeDiffHash(repo, base) {
   for (const f of files) { const c = fileAt(repo, 'WORKTREE', f.path); h.update('\0' + f.path + '\0' + (c == null ? '<deleted>' : c)); }
   return { hash: h.digest('hex').slice(0, 16), files: files.length };
 }
-module.exports = { run, git, repoRoot, isTestPath, isRunnerFile, resolveRange, diffText, diffStat, changedFiles, untrackedFiles, headSha, fileAt, addedLines, worktreeDiffHash };
+// Guard the working tree around a reviewer that may write (Codex with workspace-write / danger-full-access). The first version ran
+// `git checkout -- .` afterwards — which also wipes the AUTHOR's uncommitted work in a --worktree review. Instead: remember every file
+// that differs from HEAD (modified, staged, untracked) before the review, and afterwards undo only what the reviewer changed.
+function protectTree(repo) {
+  const snap = new Map();   // path → Buffer|null (null = did not exist)
+  const dirty = () => { const set = new Set(); for (const l of git(['status', '--porcelain', '--untracked-files=all', '-z'], repo).out.split('\0')) { const p = l.slice(3); if (l.trim() && p && !SKIP.test(p + '/')) set.add(p.includes(' -> ') ? p.split(' -> ')[1] : p); } return set; };
+  for (const p of dirty()) { try { snap.set(p, fs.readFileSync(path.join(repo, p))); } catch { snap.set(p, null); } }
+  return function restore() {
+    const restored = [];
+    for (const p of new Set([...dirty(), ...snap.keys()])) {
+      const abs = path.join(repo, p); let now = null; try { now = fs.readFileSync(abs); } catch {}
+      if (snap.has(p)) { const was = snap.get(p); if (was == null ? now != null : (now == null || !was.equals(now))) { if (was == null) { try { fs.unlinkSync(abs); } catch {} } else { fs.mkdirSync(path.dirname(abs), { recursive: true }); fs.writeFileSync(abs, was); } restored.push(p); } }
+      else if (git(['ls-files', '--error-unmatch', '--', p], repo).code === 0) { git(['checkout', '--', p], repo); restored.push(p); }   // was clean and tracked → back to HEAD
+      else { try { fs.unlinkSync(abs); } catch {} restored.push(p); }   // new file created by the reviewer
+    }
+    return restored;
+  };
+}
+module.exports = { run, git, repoRoot, isTestPath, isRunnerFile, resolveRange, diffText, diffStat, changedFiles, untrackedFiles, headSha, fileAt, addedLines, worktreeDiffHash, protectTree };

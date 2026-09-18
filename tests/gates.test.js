@@ -131,3 +131,20 @@ test('env-check: a test that assumes a variable is absent is env-dependent (culp
   const good = envCheck(repo, 'tests/add.test.js', { cmd: 'node {file}' });
   assert.strictEqual(good.verdict, 'clean', JSON.stringify(good));
 });
+
+test('protectTree: a writable reviewer\'s edits are undone, the author\'s uncommitted work is kept', () => {
+  const { protectTree } = require('../src/git');
+  const repo = fixture();
+  write(repo, 'src/add.js', "'use strict';\nmodule.exports = { add: (a, b) => a + b, mul: (a, b) => a * b };\n");   // author: modified tracked file
+  write(repo, 'src/new.js', 'module.exports = 1;\n');                                                             // author: untracked file
+  const restore = protectTree(repo);
+  // "reviewer" misbehaves: edits the author's files, edits a clean file, creates a file, deletes the author's new file
+  write(repo, 'src/add.js', 'BROKEN\n'); write(repo, 'tests/add.test.js', 'BROKEN\n'); write(repo, 'notes.md', 'reviewer note\n'); fs.unlinkSync(path.join(repo, 'src/new.js'));
+  const undone = restore().sort();
+  assert.deepStrictEqual(undone, ['notes.md', 'src/add.js', 'src/new.js', 'tests/add.test.js']);
+  assert.match(fs.readFileSync(path.join(repo, 'src/add.js'), 'utf8'), /mul: \(a, b\) => a \* b/, 'author edit kept');
+  assert.strictEqual(fs.readFileSync(path.join(repo, 'src/new.js'), 'utf8'), 'module.exports = 1;\n', 'author untracked file restored');
+  assert.match(fs.readFileSync(path.join(repo, 'tests/add.test.js'), 'utf8'), /adds/, 'clean tracked file back to HEAD');
+  assert.ok(!fs.existsSync(path.join(repo, 'notes.md')), 'reviewer-created file removed');
+  assert.deepStrictEqual(restore(), [], 'idempotent');
+});

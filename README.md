@@ -239,7 +239,7 @@ so our lock is a plain path rule plus shell-bypass patterns.
 - Known gaps: large diffs are truncated at `maxDiffChars` in the packet (the file list stays complete and the reviewer
   can open files); `red-green` needs a test command and a checkout-able base; Codex's read-only sandbox does not work on
   some Linux hosts (the tool detects the failure, falls back to the other CLI in `auto` mode, and otherwise tells you to set
-  `codexSandbox: "danger-full-access"`; the tree is reset after such a run); the lint is
+  `codexSandbox: "danger-full-access"`; after a writable Codex run the tool undoes only what the reviewer changed — your own uncommitted work stays); the lint is
   regex-based and language-agnostic — it will miss exotic runners and can be extended in `src/lint.js`.
 
 ## Development
