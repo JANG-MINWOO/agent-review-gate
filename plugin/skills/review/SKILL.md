@@ -15,5 +15,5 @@ Then act on the result:
 - Each `fact` finding: verify it against the code yourself. Right → fix it and say what changed. Wrong → say why in one sentence with evidence. Do not fix what is not broken.
 - `taste` findings: apply only if trivial and clearly better; otherwise leave them and say so.
 - test-integrity or red→green problems come first — a weakened or non-pinning test is not a passing test.
-- After fixing fact findings, run the review again once; stop when it passes or when the remaining findings are ones you refuted with evidence.
+- After fixing fact findings, run the review again **once** — two rounds at most. Stop when it passes, when the remaining findings are ones you refuted with evidence, or after the second round regardless (list what remains). An `unsure` that only says the reviewer could not run something is not a reason for another round: run it yourself and report the result.
 Report: verdict, what you fixed, what you refuted (with evidence), what remains. The ledger is `.review-gate/reviews.jsonl`.
