@@ -32,22 +32,32 @@ function resolveRange(repo, base, head) {
   }
   return [base, head || 'HEAD'];
 }
-function diffText(repo, base, head, paths) {
+const SKIP = /(^|\/)(node_modules|\.review-gate|\.git|dist|build|coverage|\.next|vendor|target)\//;
+// Untracked files never appear in `git diff <base>` — a worktree review of brand-new files (a test backfill, a new module) would hand the
+// reviewer an empty diff (observed 2026-09-18: 3 new test files, packet said "(empty)"). Synthesize creation diffs for them.
+function untrackedFiles(repo) { return git(['ls-files', '--others', '--exclude-standard'], repo).out.split('\n').map(l => l.trim()).filter(l => l && !SKIP.test(l)); }
+function untrackedDiff(repo, paths) {
+  return paths.map(p => git(['diff', '--no-color', '--no-ext-diff', '--no-index', '--', '/dev/null', p], repo).out).join('');   // exit 1 = differs, expected
+}
+function diffText(repo, base, head, paths, opts = {}) {
   const args = ['diff', '--no-color', '--no-ext-diff', ...refArgs(base, head)];
   if (paths && paths.length) args.push('--', ...paths);
-  return git(args, repo).out;
+  let out = git(args, repo).out;
+  if (head === 'WORKTREE' && !opts.trackedOnly) { const u = untrackedFiles(repo).filter(p => !paths || !paths.length || paths.includes(p)); if (u.length) out += untrackedDiff(repo, u); }
+  return out;
 }
-function diffStat(repo, base, head) { return git(['diff', '--stat=120', ...refArgs(base, head)], repo).out; }
+function diffStat(repo, base, head) {
+  let out = git(['diff', '--stat=120', ...refArgs(base, head)], repo).out;
+  if (head === 'WORKTREE') for (const p of untrackedFiles(repo)) { let n = 0; try { const c = fs.readFileSync(path.join(repo, p), 'utf8'); n = c.split('\n').length - (c.endsWith('\n') ? 1 : 0); } catch {} out += ` ${p} | ${n} +  (new, untracked)\n`; }
+  return out;
+}
 function changedFiles(repo, base, head) {
   const rows = [];
   for (const l of git(['diff', '--name-status', ...refArgs(base, head)], repo).out.split('\n')) {
     const parts = l.split('\t');
     if (parts.length >= 2) rows.push({ status: parts[0][0], path: parts[parts.length - 1] });
   }
-  if (head === 'WORKTREE') {   // untracked files count as added (dependency/vendor/artefact dirs never do)
-    for (const l of git(['ls-files', '--others', '--exclude-standard'], repo).out.split('\n')) if (l.trim()) rows.push({ status: 'A', path: l.trim() });
-  }
-  const SKIP = /(^|\/)(node_modules|\.review-gate|\.git|dist|build|coverage|\.next|vendor|target)\//;
+  if (head === 'WORKTREE') for (const p of untrackedFiles(repo)) rows.push({ status: 'A', path: p });   // untracked files count as added (dependency/vendor/artefact dirs never do)
   return rows.filter(r => !SKIP.test(r.path));
 }
 function headSha(repo, head) { return git(['rev-parse', '--short=12', head === 'WORKTREE' ? 'HEAD' : head], repo).out.trim(); }
@@ -61,13 +71,14 @@ function addedLines(repo, base, head, p) {
 }
 const CODE_EXT = /\.(js|jsx|mjs|cjs|ts|tsx|py|go|rs|java|kt|rb|php|cs|swift|vue|svelte)$/;
 // Fingerprint of the code changes in the working tree vs base — the Stop gate compares it with the last review's fingerprint.
+// Content-based and independent of the index: `git add` after a review must not look like a new change (observed 2026-09-18 — a session
+// staged its reviewed test files and the gate demanded a third review of identical content).
 function worktreeDiffHash(repo, base) {
   const crypto = require('node:crypto');
-  const files = changedFiles(repo, base, 'WORKTREE').filter(f => CODE_EXT.test(f.path) || isTestPath(f.path) || isRunnerFile(f.path));
+  const files = changedFiles(repo, base, 'WORKTREE').filter(f => CODE_EXT.test(f.path) || isTestPath(f.path) || isRunnerFile(f.path)).sort((a, b) => a.path < b.path ? -1 : 1);
   if (!files.length) return { hash: null, files: 0 };
   const h = crypto.createHash('sha1');
-  h.update(diffText(repo, base, 'WORKTREE', files.map(f => f.path)));
-  for (const f of files) { if (f.status === 'A') { const c = fileAt(repo, 'WORKTREE', f.path); if (c != null) h.update('\0' + f.path + '\0' + c); } }
+  for (const f of files) { const c = fileAt(repo, 'WORKTREE', f.path); h.update('\0' + f.path + '\0' + (c == null ? '<deleted>' : c)); }
   return { hash: h.digest('hex').slice(0, 16), files: files.length };
 }
-module.exports = { run, git, repoRoot, isTestPath, isRunnerFile, resolveRange, diffText, diffStat, changedFiles, headSha, fileAt, addedLines, worktreeDiffHash };
+module.exports = { run, git, repoRoot, isTestPath, isRunnerFile, resolveRange, diffText, diffStat, changedFiles, untrackedFiles, headSha, fileAt, addedLines, worktreeDiffHash };

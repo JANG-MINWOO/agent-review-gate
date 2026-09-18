@@ -12,6 +12,7 @@ const SHELL_WRITE = /\b(sed\s+-i|perl\s+-p?i|tee\b|>\s*\S|>>\s*\S|\bcp\s|\bmv\s|
 const TEST_HINT = /(test_[^\s]*\.py|_test\.[a-z]+|\.test\.[a-z]+|\.spec\.[a-z]+|\/tests?\/|__tests__|\/e2e\/|conftest\.py|pytest\.ini|vitest\.(config|workspace)|jest\.config|playwright\.config|tox\.ini)/;
 
 function guardTests(hookJson, repoOverride) {
+  if (process.env.REVIEW_GATE_ROLE === 'reviewer') return { code: 0 };   // the reviewer process is read-only by construction; never lock it out
   let hook; try { hook = JSON.parse(hookJson); } catch { return { code: 0 }; }
   let repo; try { repo = repoRoot(repoOverride ? path.resolve(hook.cwd || '.', repoOverride) : (hook.cwd || '.')); } catch { return { code: 0 }; }
   if (getPhase(repo) !== 'implement') return { code: 0 };

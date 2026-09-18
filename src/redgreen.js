@@ -27,7 +27,7 @@ function redGreen(repo, base, head, testCmd, opts = {}) {
     let t0 = Date.now(); const r1 = run(testCmd, [], { cwd: wt, shell: true, timeout });
     out.red = r1.code !== 0; out.red_seconds = (Date.now() - t0) / 1000; out.red_tail = (r1.out + r1.err).slice(-1500);
     git(['checkout', '--detach', '-q', head === 'WORKTREE' ? 'HEAD' : head], wt);
-    if (head === 'WORKTREE') { const full = diffText(repo, base, 'WORKTREE'); if (full.trim()) git(['apply', '--3way', '-'], wt, full); copyUntracked(repo, wt, files.map(f => f.path)); }
+    if (head === 'WORKTREE') { const full = diffText(repo, base, 'WORKTREE', null, { trackedOnly: true }); if (full.trim()) git(['apply', '--3way', '-'], wt, full); copyUntracked(repo, wt, files.map(f => f.path)); }
     t0 = Date.now(); const r2 = run(testCmd, [], { cwd: wt, shell: true, timeout });
     out.green = r2.code === 0; out.green_seconds = (Date.now() - t0) / 1000; out.green_tail = (r2.out + r2.err).slice(-1500);
     out.verdict = out.red && out.green ? 'ok' : !out.red ? 'not-red' : 'not-green';

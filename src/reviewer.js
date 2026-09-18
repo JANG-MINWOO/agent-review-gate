@@ -25,7 +25,7 @@ function buildPacket(repo, base, head, intent, checks, maxChars, maxTurns) {
     const log = git(['log', '--no-merges', '--format=- %s%n%b', `${base}..${head === 'WORKTREE' ? 'HEAD' : head}`], repo).out.trim();
     intent = log || '(no intent given — infer it from the diff and say so under "checked")';
   }
-  const parts = ['# Review packet', '', (maxTurns ? `(You have a budget of about ${maxTurns} tool calls. Open what you need, then stop and answer — the final message must be the JSON verdict.)` : ''), '', '## Intent of the change', intent.trim(), '', '## Changed files', stat.trim() || '(empty)', '',
+  const parts = ['# Review packet', '', `Repository: ${repo} (your working directory). Read-only except running its tests.`, (maxTurns ? `(You have a budget of about ${maxTurns} tool calls. Open what you need, run the relevant tests if you can, then stop and answer — the final message must be the JSON verdict.)` : ''), '', '## Intent of the change', intent.trim(), '', '## Changed files', stat.trim() || '(empty)', '',
     '## Changed test files', testFiles.map(p => '- ' + p).join('\n') || '- none (no test changes — note that in your verdict)', ''];
   if (checks && Object.keys(checks).length) parts.push('## Deterministic checks already run', '```json', JSON.stringify(checks, null, 1), '```', '');
   if (diff.length > maxChars) parts.push('## Diff', `(diff is ${diff.length.toLocaleString()} chars — truncated to ${maxChars.toLocaleString()}. Open the remaining files with your read tools; the file list above is complete.)`, '```diff', diff.slice(0, maxChars), '```');
@@ -41,19 +41,33 @@ function extractJson(text) {
   return JSON.parse(t.slice(s, e + 1));
 }
 
+// The reviewer process gets none of the author's context: `--setting-sources ""` loads no settings, no hooks and no CLAUDE.md (verified
+// 2026-09-18: with `project` the reviewer read the repo's review-gate rules, tried to run the review itself and hit the Stop gate);
+// REVIEW_GATE_ROLE=reviewer makes our own hooks stand down if a user-level settings file still wires them.
+const reviewerEnv = () => Object.assign({}, process.env, { REVIEW_GATE_ROLE: 'reviewer' });
 function runClaude(repo, packet, o) {
-  const args = ['-p', '--output-format', 'json', '--strict-mcp-config', '--setting-sources', 'project', '--no-session-persistence',
+  const args = ['-p', '--output-format', 'json', '--strict-mcp-config', '--setting-sources', '', '--no-session-persistence',
     '--system-prompt', fs.readFileSync(RUBRIC, 'utf8'), '--max-turns', String(o.maxTurns || 25), '--allowedTools', o.allowedTools, ...(o.model ? ['--model', o.model] : []), ...(o.extra || [])];
-  const p = run('claude', args, { cwd: repo, input: packet, timeout: (o.timeoutSec || 1800) * 1000 });
+  const p = run('claude', args, { cwd: repo, input: packet, timeout: (o.timeoutSec || 1800) * 1000, env: reviewerEnv() });
   let text = p.out, meta = {};
   try { const j = JSON.parse(p.out); text = j.result || ''; meta = { cost_usd: j.total_cost_usd, duration_ms: j.duration_ms, turns: j.num_turns, model: j.model || o.model, is_error: j.is_error, subtype: j.subtype, terminal_reason: j.terminal_reason }; } catch { meta = { model: o.model }; }
   return { text, meta, raw: p.out + '\n--- stderr ---\n' + p.err.slice(-3000), code: p.code };
 }
+// Deterministic pre-flight: `codex sandbox -- true` runs a no-op under the same sandbox codex exec would use. On Linux hosts without
+// user namespaces it fails with "bwrap: ... Operation not permitted" — and codex's JSON stream never reports the failed spawns, the model
+// just writes "unsure". Probing first costs ~1s and no model call.
+function codexSandboxError(sandbox) {
+  if (sandbox === 'danger-full-access') return null;
+  const p = run('codex', ['sandbox', '--', 'true'], { timeout: 30000 });
+  return p.code === 0 ? null : ((p.err || p.out).trim().split('\n').pop() || `codex sandbox probe failed (rc=${p.code})`);
+}
 function runCodex(repo, packet, o) {
+  const sb = codexSandboxError(o.sandbox || 'read-only');
+  if (sb) return { text: '', meta: { env_fail: sb, model: o.model }, raw: 'sandbox pre-flight failed: ' + sb, code: -1 };
   const outf = path.join(os.tmpdir(), `review-gate-out-${process.pid}-${Date.now()}.json`);
   const prompt = fs.readFileSync(RUBRIC, 'utf8') + '\n\n' + packet;
   const args = ['exec', '--json', '--skip-git-repo-check', '--output-schema', SCHEMA, '-s', o.sandbox || 'read-only', '-o', outf, '-C', repo, ...(o.model ? ['-m', o.model] : []), ...(o.extra || []), '-'];
-  const p = run('codex', args, { cwd: repo, input: prompt, timeout: (o.timeoutSec || 1800) * 1000 });
+  const p = run('codex', args, { cwd: repo, input: prompt, timeout: (o.timeoutSec || 1800) * 1000, env: reviewerEnv() });
   let text = fs.existsSync(outf) ? fs.readFileSync(outf, 'utf8') : ''; try { fs.unlinkSync(outf); } catch {}
   let usage = {};
   for (const line of p.out.split('\n')) {
@@ -63,4 +77,12 @@ function runCodex(repo, packet, o) {
   }
   return { text, meta: { usage, model: o.model }, raw: p.out.slice(-6000) + '\n--- stderr ---\n' + p.err.slice(-3000), code: p.code };
 }
-module.exports = { detectClis, pickReviewer, buildPacket, extractJson, runClaude, runCodex, RUBRIC, SCHEMA };
+// A reviewer that could not work is not a verdict. Signatures seen so far: Codex's Linux sandbox (bubblewrap) refused on hosts without
+// user namespaces — the model then answers "unsure" because every command failed (2026-09-18).
+const ENV_FAIL = /bwrap:.*Operation not permitted|sandbox (could not|couldn't|failed to|cannot|can't) (start|be (created|initiali[sz]ed)|initiali[sz]e)|failed to (start|create|set up) (the )?sandbox|Landlock.*(unsupported|not supported)/i;
+function environmentFailure(r, verdict) {
+  if (r.meta && r.meta.env_fail) return r.meta.env_fail;
+  const text = (r.raw || '') + ' ' + JSON.stringify(verdict || {});
+  const m = text.match(ENV_FAIL); return m ? m[0] : null;
+}
+module.exports = { detectClis, pickReviewer, buildPacket, extractJson, runClaude, runCodex, environmentFailure, codexSandboxError, RUBRIC, SCHEMA };

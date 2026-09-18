@@ -77,3 +77,27 @@ test('guard: implement phase blocks test edits (Edit tool and shell writes), tes
   assert.strictEqual(guardTests(hook('Bash', { command: "sed -i 's/adds/x/' tests/add.test.js" })).code, 2);
   assert.strictEqual(guardTests(hook('Bash', { command: 'node --test tests/' })).code, 0, 'running tests is fine');
 });
+
+test('worktree: untracked new files appear in the diff/stat/packet; fingerprint is identical untracked → staged → committed', () => {
+  const { diffText, diffStat, worktreeDiffHash } = require('../src/git'); const { buildPacket } = require('../src/reviewer');
+  const repo = fixture(); git(['checkout', '-q', '-b', 'work', 'main'], repo);
+  write(repo, 'tests/mul.test.js', "const assert = require('node:assert'); const test = (n, f) => f(); const { mul } = require('../src/add');\ntest('multiplies', () => { assert.strictEqual(mul(2, 3), 6); });\n");
+  write(repo, 'node_modules/dep/index.js', 'module.exports = 1;\n');   // never part of a review
+  const d = diffText(repo, 'main', 'WORKTREE'); assert.match(d, /\+\+\+ b\/tests\/mul\.test\.js/); assert.match(d, /\+test\('multiplies'/); assert.doesNotMatch(d, /node_modules/);
+  assert.match(diffStat(repo, 'main', 'WORKTREE'), /tests\/mul\.test\.js \| 2 \+  \(new, untracked\)/);
+  const pk = buildPacket(repo, 'main', 'WORKTREE', 'add mul', {}, 100000, 10); assert.strictEqual(pk.meta.files, 1); assert.match(pk.packet, /\+test\('multiplies'/);
+  const h1 = worktreeDiffHash(repo, 'main').hash; git(['add', '-A'], repo); const h2 = worktreeDiffHash(repo, 'main').hash;
+  commitAll(repo, 'mul test'); const h3 = worktreeDiffHash(repo, 'main').hash;
+  assert.ok(h1); assert.strictEqual(h1, h2, 'git add must not change the fingerprint'); assert.strictEqual(h2, h3, 'commit must not change the fingerprint');
+  write(repo, 'tests/mul.test.js', "// edited\n"); assert.notStrictEqual(worktreeDiffHash(repo, 'main').hash, h3, 'content change must change the fingerprint');
+});
+
+test('reviewer role: the guard stands down for REVIEW_GATE_ROLE=reviewer; environment failure is detected from the reviewer output', () => {
+  const { environmentFailure } = require('../src/reviewer');
+  const repo = fixture(); setPhase(repo, 'implement');
+  const hook = JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: path.join(repo, 'tests/add.test.js') }, cwd: repo });
+  assert.strictEqual(guardTests(hook).code, 2);
+  process.env.REVIEW_GATE_ROLE = 'reviewer'; try { assert.strictEqual(guardTests(hook).code, 0); } finally { delete process.env.REVIEW_GATE_ROLE; }
+  assert.ok(environmentFailure({ raw: '' }, { verdict: 'unsure', summary: 'inspection failed because the sandbox could not start (bwrap: Operation not permitted)', findings: [] }));
+  assert.strictEqual(environmentFailure({ raw: 'ran 12 commands fine' }, { verdict: 'pass', summary: 'all good', findings: [] }), null);
+});

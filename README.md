@@ -102,6 +102,18 @@ review inline; `"off"` disables it.
    exit 0 (pass/unsure) · exit 2 (fail / hard lint / not-red|not-green) when --block or config.block
 ```
 
+**The reviewer process is sealed off from the author's context.** It is started with `--setting-sources ""` (no settings, no hooks,
+no CLAUDE.md — verified: with `project` sources the reviewer read the repository's own review-gate rules, tried to "run the review
+before finishing" and hit the Stop gate itself) and with `REVIEW_GATE_ROLE=reviewer`, which makes the guard and Stop hooks stand
+down if a user-level settings file still wires them. It may run the project's test command (and the usual runners) but nothing else
+that writes. Untracked files are part of a worktree review — a backfill of brand-new test files reaches the reviewer as creation
+diffs, not as an empty packet. A reviewer whose environment failed (Codex's Linux sandbox refusing to start, for example) is
+recorded as an error, never as a verdict; in `auto` mode the other CLI is tried once, otherwise the fix is printed.
+
+**The Stop gate's fingerprint is content-based**: `git add` or a commit of already-reviewed files does not look like a new change
+(it did in the first version — a session staged its reviewed tests and was sent to a third, identical review). The gate blocks at
+most three times per session, then lets the session stop while saying the change is unreviewed.
+
 CI runs the deterministic gates on every PR (`adapters/ci/review-gate.yml`); the model review in CI is opt-in once you
 have credentials there. **Review unit ≠ PR unit**: for a large PR, run `review` per commit range instead of splitting the
 PR into forty CI runs.
@@ -187,9 +199,16 @@ so our lock is a plain path rule plus shell-bypass patterns.
   fact-level findings against the task spec in 66 s. Whether those two findings were right is what the pilot checks —
   against a defect list produced independently. Run `review` with both CLIs for a week on your own repo before
   believing either.
+- **Backfill dry run (2026-09-18, real Next.js game repo, one plain-language request):** the session wrote an in-memory Upstash-Redis
+  fake plus 64 characterization tests for the two untested server stores, every test file passed pin-check (fails when its target is
+  blanked, passes when restored), and the fresh reviewer returned `pass` with three low-severity fact notes that were all correct
+  (a dead code path being pinned, a tautological assertion against a shared object, a wrong error message hidden by a loose matcher).
+  The same run exposed three tool defects, since fixed: an empty packet for untracked files, a sandbox failure recorded as a verdict,
+  and a spurious third review after `git add`.
 - Known gaps: large diffs are truncated at `maxDiffChars` in the packet (the file list stays complete and the reviewer
   can open files); `red-green` needs a test command and a checkout-able base; Codex's read-only sandbox does not work on
-  some Linux hosts (set `codexSandbox: "danger-full-access"`; the tool resets the tree afterwards); the lint is
+  some Linux hosts (the tool detects the failure, falls back to the other CLI in `auto` mode, and otherwise tells you to set
+  `codexSandbox: "danger-full-access"`; the tree is reset after such a run); the lint is
   regex-based and language-agnostic — it will miss exotic runners and can be extended in `src/lint.js`.
 
 ## Development
