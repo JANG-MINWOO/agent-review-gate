@@ -23,21 +23,31 @@ function mergeHooks(settings, ours) {
   return settings;
 }
 function init(o) {
-  const repo = repoRoot(o.repo || '.'); const dir = path.join(repo, '.review-gate'); fs.mkdirSync(dir, { recursive: true });
+  // --target <subdir>: the git repo to review lives below the directory Claude Code runs in (e.g. context-repo/ai-board-game).
+  // Config + ledger go into the target repo; hooks and the /review command go into the cwd project (that is where Claude Code reads
+  // .claude/settings.json), with `--repo <target>` baked into every command so the gates act on the right repository.
+  const cwd = path.resolve(o.cwd || '.'); const target = o.target ? path.resolve(cwd, o.target) : null;
+  const repo = repoRoot(target || o.repo || '.'); const dir = path.join(repo, '.review-gate'); fs.mkdirSync(dir, { recursive: true });
+  const rel = target ? path.relative(cwd, repo) : ''; const R = rel ? ` --repo ${JSON.stringify(rel)}` : '';
+  const home = target ? cwd : repo;   // where hooks/commands are written
   const cfg = Object.assign({ reviewer: 'auto', author: 'claude', testCmd: detectTestCmd(repo), onStop: 'checks', block: false, maxDiffChars: 120000, model: null, codexSandbox: 'read-only' }, readConfig(repo), o.set || {});
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(cfg, null, 2) + '\n');
   const gi = path.join(dir, '.gitignore'); if (!fs.existsSync(gi)) fs.writeFileSync(gi, 'runs/\nphase\n');
   const done = ['.review-gate/config.json'];
   if (!o.noClaude) {
-    const sdir = path.join(repo, '.claude'); fs.mkdirSync(sdir, { recursive: true }); const sp = path.join(sdir, 'settings.json');
+    const sdir = path.join(home, '.claude'); fs.mkdirSync(sdir, { recursive: true }); const sp = path.join(sdir, 'settings.json');
     let settings = {}; try { settings = JSON.parse(fs.readFileSync(sp, 'utf8')); } catch {}
+    // npx must find the package: when the target holds node_modules, run npx from there (--prefix) so the cwd project needs no package.json
+    const NPX = rel ? `npx --no-install --prefix ${JSON.stringify(rel)} review-gate` : CMD;
     const ours = {
-      PreToolUse: [{ matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hooks: [{ type: 'command', command: `${CMD} guard-tests`, timeout: 10 }] }],
-      Stop: cfg.onStop === 'off' ? [] : [{ hooks: [{ type: 'command', command: `${CMD} on-stop`, timeout: cfg.onStop === 'review' ? 1800 : 600 }] }],
+      PreToolUse: [{ matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hooks: [{ type: 'command', command: `${NPX} guard-tests${R}`, timeout: 10 }] }],
+      Stop: cfg.onStop === 'off' ? [] : [{ hooks: [{ type: 'command', command: `${NPX} on-stop${R}`, timeout: cfg.onStop === 'review' ? 1800 : 600 }] }],
     };
-    fs.writeFileSync(sp, JSON.stringify(mergeHooks(settings, ours), null, 2) + '\n'); done.push('.claude/settings.json (hooks merged)');
+    fs.writeFileSync(sp, JSON.stringify(mergeHooks(settings, ours), null, 2) + '\n'); done.push(path.relative(cwd, sp) + ' (hooks merged' + (rel ? `, targeting ${rel}` : '') + ')');
     const cdir = path.join(sdir, 'commands'); fs.mkdirSync(cdir, { recursive: true });
-    fs.writeFileSync(path.join(cdir, 'review.md'), fs.readFileSync(path.join(__dirname, '..', 'adapters', 'claude-plugin', 'commands', 'review.md'), 'utf8')); done.push('.claude/commands/review.md');
+    let cmdText = fs.readFileSync(path.join(__dirname, '..', 'adapters', 'claude-plugin', 'commands', 'review.md'), 'utf8');
+    if (rel) cmdText = cmdText.replace('npx --no-install review-gate review --worktree', `${NPX} review --worktree${R}`);
+    fs.writeFileSync(path.join(cdir, 'review.md'), cmdText); done.push(path.relative(cwd, path.join(cdir, 'review.md')));
   }
   if (o.codex) {
     const cdir = path.join(repo, '.codex'); fs.mkdirSync(cdir, { recursive: true });
@@ -47,6 +57,6 @@ function init(o) {
     const wdir = path.join(repo, '.github', 'workflows'); fs.mkdirSync(wdir, { recursive: true });
     fs.writeFileSync(path.join(wdir, 'review-gate.yml'), fs.readFileSync(path.join(__dirname, '..', 'adapters', 'ci', 'review-gate.yml'), 'utf8')); done.push('.github/workflows/review-gate.yml');
   }
-  return { repo, cfg, done };
+  return { repo, cfg, done, home };
 }
 module.exports = { init, readConfig, detectTestCmd, mergeHooks };

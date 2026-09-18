@@ -104,7 +104,21 @@ npx review-gate red-green --test-cmd "pytest -q"
 npx review-gate phase implement              # lock tests; `phase test` to unlock
 ```
 
-`init` is idempotent — run it again after `npm update agent-review-gate`. Config lives in `.review-gate/config.json`
+`init` is idempotent — run it again after `npm update agent-review-gate`.
+
+**Nested layout (context repo above the code repo).** If you run Claude Code from a parent directory that holds your
+notes/wiki and the code lives in a subfolder that is its own git repo (`my-context/my-app`), install the package in the
+code repo and run `init` from the parent with `--target`:
+
+```
+cd my-context/my-app && npm i -D agent-review-gate
+cd .. && npx --prefix my-app review-gate init --target my-app
+```
+
+Config, ledger and phase go into `my-app/.review-gate/` (the repo that is reviewed); the hooks and the `/review` command go
+into `my-context/.claude/` (the project Claude Code actually reads), with `--repo my-app` baked into every command. The
+test lock then applies to `my-app`'s tests and leaves the context repo's own files alone. Running Claude Code inside
+`my-app` directly? Run a plain `npx review-gate init` there as well — both can coexist. Config lives in `.review-gate/config.json`
 (`reviewer`, `author`, `model`, `testCmd`, `onStop`: `checks` | `review` | `off`, `block`, `maxDiffChars`, `codexSandbox`,
 `redGreenOnReview`); environment overrides `REVIEW_GATE_REVIEWER|AUTHOR|MODEL|CODEX_SANDBOX|OUT`. `--out DIR` keeps the
 ledger and run artefacts outside the reviewed repo (pilots, CI artefacts).

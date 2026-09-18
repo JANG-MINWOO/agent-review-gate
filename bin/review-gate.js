@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // review-gate CLI — independent code review by a fresh CLI session (claude -p / codex exec) + deterministic TDD gates.
-//   review-gate init [--codex] [--ci] [--no-claude]     wire hooks/config into this project
+//   review-gate init [--target SUBDIR] [--codex] [--ci] [--no-claude]   wire hooks/config (--target: the git repo lives below the cwd project)
 //   review-gate review [--base R] [--head R|--worktree] [--reviewer auto|claude|codex|same] [--author claude|codex]
 //                      [--model M] [--intent FILE] [--test-cmd CMD] [--block] [--json] [--label L] [--no-lint] [--out DIR]
 //   review-gate lint-tests [--base R] [--head R|--worktree] [--json]
@@ -19,7 +19,7 @@ const spec = {
   repo: { type: 'string' }, base: { type: 'string' }, head: { type: 'string' }, worktree: { type: 'boolean' }, reviewer: { type: 'string' }, author: { type: 'string' },
   model: { type: 'string' }, intent: { type: 'string' }, 'test-cmd': { type: 'string' }, block: { type: 'boolean' }, json: { type: 'boolean' }, label: { type: 'string' },
   'no-lint': { type: 'boolean' }, 'max-diff-chars': { type: 'string' }, 'max-turns': { type: 'string' }, sandbox: { type: 'string' }, 'allowed-tools': { type: 'string' },
-  out: { type: 'string' }, ask: { type: 'boolean' }, codex: { type: 'boolean' }, ci: { type: 'boolean' }, 'no-claude': { type: 'boolean' }, set: { type: 'string', multiple: true },
+  out: { type: 'string' }, target: { type: 'string' }, ask: { type: 'boolean' }, codex: { type: 'boolean' }, ci: { type: 'boolean' }, 'no-claude': { type: 'boolean' }, set: { type: 'string', multiple: true },
 };
 let args; try { args = parseArgs({ args: rest, options: spec, allowPositionals: true }); } catch (e) { console.error('review-gate: ' + e.message); process.exit(64); }
 const v = args.values, pos = args.positionals;
@@ -66,7 +66,7 @@ function opts() {
       process.exit(0);
     }
     if (cmd === 'phase') { const { getPhase, setPhase } = require('../src/hooks'); const repo = repoRoot(v.repo || '.'); if (pos[0]) { if (!['test', 'implement'].includes(pos[0])) { console.error('phase: test | implement'); process.exit(64); } setPhase(repo, pos[0]); console.log('phase = ' + pos[0]); } else console.log(getPhase(repo)); process.exit(0); }
-    if (cmd === 'guard-tests') { const { guardTests } = require('../src/hooks'); const r = guardTests(readStdin()); if (r.msg) console.error(r.msg); process.exit(r.code); }
+    if (cmd === 'guard-tests') { const { guardTests } = require('../src/hooks'); const r = guardTests(readStdin(), v.repo); if (r.msg) console.error(r.msg); process.exit(r.code); }
     if (cmd === 'on-stop') {   // Stop hook: cheap deterministic checks on the working tree; full review only if config.onStop === 'review'
       const hookIn = readStdin(); let hook = {}; try { hook = JSON.parse(hookIn); } catch {}
       if (hook.stop_hook_active) process.exit(0);   // do not loop
@@ -79,7 +79,7 @@ function opts() {
       if (msgs.length) console.error(msgs.join('\n'));
       process.exit(lt.level === 'hard' && c.block ? 2 : 0);
     }
-    if (cmd === 'init') { const { init } = require('../src/init'); const set = {}; for (const kv of v.set || []) { const [k, ...r] = kv.split('='); set[k] = r.join('=') === 'true' ? true : r.join('=') === 'false' ? false : r.join('='); } const r = init({ repo: v.repo, codex: !!v.codex, ci: !!v.ci, noClaude: !!v['no-claude'], set }); console.log('review-gate initialised in ' + r.repo + '\n  ' + r.done.join('\n  ') + `\n  test command: ${r.cfg.testCmd || '(none detected — set testCmd in .review-gate/config.json)'} · reviewer: ${r.cfg.reviewer} · on stop: ${r.cfg.onStop}`); process.exit(0); }
+    if (cmd === 'init') { const { init } = require('../src/init'); const set = {}; for (const kv of v.set || []) { const [k, ...r] = kv.split('='); set[k] = r.join('=') === 'true' ? true : r.join('=') === 'false' ? false : r.join('='); } const r = init({ repo: v.repo, target: v.target, cwd: '.', codex: !!v.codex, ci: !!v.ci, noClaude: !!v['no-claude'], set }); console.log('review-gate initialised in ' + r.repo + '\n  ' + r.done.join('\n  ') + `\n  test command: ${r.cfg.testCmd || '(none detected — set testCmd in .review-gate/config.json)'} · reviewer: ${r.cfg.reviewer} · on stop: ${r.cfg.onStop}`); process.exit(0); }
     console.error(fs.readFileSync(__filename, 'utf8').split('\n').filter(l => l.startsWith('//')).map(l => l.slice(3)).join('\n')); process.exit(cmd ? 64 : 0);
   } catch (e) { console.error('review-gate: ' + (e && e.message || e)); process.exit(1); }
 })();
