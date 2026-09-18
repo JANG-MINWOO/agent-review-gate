@@ -18,7 +18,7 @@ function review(o) {
   if (!o.noLint) checks.test_integrity = lintTests(repo, base, head);
   if (o.testCmd) { const rg = redGreen(repo, base, head, o.testCmd); checks.red_green = Object.fromEntries(Object.entries(rg).filter(([k]) => !k.endsWith('_tail'))); }
   const intent = o.intent ? fs.readFileSync(o.intent, 'utf8') : (o.intentText || null);
-  const { packet, meta: pmeta } = buildPacket(repo, base, head, intent, checks, o.maxDiffChars || 120000);
+  const { packet, meta: pmeta } = buildPacket(repo, base, head, intent, checks, o.maxDiffChars || 120000, o.maxTurns || 40);
   if (pmeta.files === 0) return { skipped: 'empty diff', code: 0 };
   const home = o.out ? path.resolve(o.out) : path.join(repo, '.review-gate');   // --out: keep ledger+runs outside the reviewed repo (pilots, CI artifacts)
   const runDir = path.join(home, 'runs', `${stamp()}-${headSha(repo, head)}`); fs.mkdirSync(runDir, { recursive: true });
@@ -29,7 +29,10 @@ function review(o) {
   fs.writeFileSync(path.join(runDir, 'raw.txt'), r.raw);
   if (reviewer === 'codex' && (o.sandbox || 'read-only') !== 'read-only') git(['checkout', '--', '.'], repo);   // the reviewer must not leave edits behind
   let verdict;
-  try { verdict = extractJson(r.text); } catch (e) { return { error: `reviewer (${reviewer}) returned no parsable verdict (rc=${r.code}): ${e.message}`, tail: (r.text || '').slice(-800), code: 1, runDir }; }
+  try { verdict = extractJson(r.text); } catch (e) {
+    const why = r.meta && (r.meta.subtype === 'error_max_turns' || r.meta.terminal_reason === 'max_turns') ? `the reviewer used up its turn budget (${o.maxTurns || 40}) exploring and never answered — raise --max-turns or narrow the diff` : `no parsable verdict (rc=${r.code}): ${e.message}`;
+    return { error: `reviewer (${reviewer}): ${why}`, tail: (r.text || '').slice(-800), code: 1, runDir };
+  }
   verdict.findings = verdict.findings || []; verdict.good = verdict.good || []; verdict.checked = verdict.checked || [];
   if (!['pass', 'fail', 'unsure'].includes(verdict.verdict)) verdict.verdict = 'unsure';
   // Verdict calibration (pilot 2026-09-18, 10 branches × 2 reviewers): one reviewer wrote medium-severity fact findings and still said "pass"

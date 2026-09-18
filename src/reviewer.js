@@ -18,14 +18,14 @@ function pickReviewer(mode, author) {
   throw new Error('no reviewer CLI found (claude or codex)');
 }
 
-function buildPacket(repo, base, head, intent, checks, maxChars) {
+function buildPacket(repo, base, head, intent, checks, maxChars, maxTurns) {
   const stat = diffStat(repo, base, head), files = changedFiles(repo, base, head), diff = diffText(repo, base, head);
   const testFiles = files.filter(f => isTestPath(f.path)).map(f => f.path);
   if (!intent) {
     const log = git(['log', '--no-merges', '--format=- %s%n%b', `${base}..${head === 'WORKTREE' ? 'HEAD' : head}`], repo).out.trim();
     intent = log || '(no intent given — infer it from the diff and say so under "checked")';
   }
-  const parts = ['# Review packet', '', '## Intent of the change', intent.trim(), '', '## Changed files', stat.trim() || '(empty)', '',
+  const parts = ['# Review packet', '', (maxTurns ? `(You have a budget of about ${maxTurns} tool calls. Open what you need, then stop and answer — the final message must be the JSON verdict.)` : ''), '', '## Intent of the change', intent.trim(), '', '## Changed files', stat.trim() || '(empty)', '',
     '## Changed test files', testFiles.map(p => '- ' + p).join('\n') || '- none (no test changes — note that in your verdict)', ''];
   if (checks && Object.keys(checks).length) parts.push('## Deterministic checks already run', '```json', JSON.stringify(checks, null, 1), '```', '');
   if (diff.length > maxChars) parts.push('## Diff', `(diff is ${diff.length.toLocaleString()} chars — truncated to ${maxChars.toLocaleString()}. Open the remaining files with your read tools; the file list above is complete.)`, '```diff', diff.slice(0, maxChars), '```');
@@ -46,7 +46,7 @@ function runClaude(repo, packet, o) {
     '--system-prompt', fs.readFileSync(RUBRIC, 'utf8'), '--max-turns', String(o.maxTurns || 25), '--allowedTools', o.allowedTools, ...(o.model ? ['--model', o.model] : []), ...(o.extra || [])];
   const p = run('claude', args, { cwd: repo, input: packet, timeout: (o.timeoutSec || 1800) * 1000 });
   let text = p.out, meta = {};
-  try { const j = JSON.parse(p.out); text = j.result || ''; meta = { cost_usd: j.total_cost_usd, duration_ms: j.duration_ms, turns: j.num_turns, model: j.model || o.model, is_error: j.is_error }; } catch { meta = { model: o.model }; }
+  try { const j = JSON.parse(p.out); text = j.result || ''; meta = { cost_usd: j.total_cost_usd, duration_ms: j.duration_ms, turns: j.num_turns, model: j.model || o.model, is_error: j.is_error, subtype: j.subtype, terminal_reason: j.terminal_reason }; } catch { meta = { model: o.model }; }
   return { text, meta, raw: p.out + '\n--- stderr ---\n' + p.err.slice(-3000), code: p.code };
 }
 function runCodex(repo, packet, o) {

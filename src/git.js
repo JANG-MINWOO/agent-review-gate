@@ -44,10 +44,11 @@ function changedFiles(repo, base, head) {
     const parts = l.split('\t');
     if (parts.length >= 2) rows.push({ status: parts[0][0], path: parts[parts.length - 1] });
   }
-  if (head === 'WORKTREE') {   // untracked files count as added
+  if (head === 'WORKTREE') {   // untracked files count as added (dependency/vendor/artefact dirs never do)
     for (const l of git(['ls-files', '--others', '--exclude-standard'], repo).out.split('\n')) if (l.trim()) rows.push({ status: 'A', path: l.trim() });
   }
-  return rows;
+  const SKIP = /(^|\/)(node_modules|\.review-gate|\.git|dist|build|coverage|\.next|vendor|target)\//;
+  return rows.filter(r => !SKIP.test(r.path));
 }
 function headSha(repo, head) { return git(['rev-parse', '--short=12', head === 'WORKTREE' ? 'HEAD' : head], repo).out.trim(); }
 function fileAt(repo, ref, p) {

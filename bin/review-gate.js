@@ -29,7 +29,7 @@ function opts() {
   return {
     repo, base: v.base, head: v.head, worktree: !!v.worktree, reviewer: v.reviewer || process.env.REVIEW_GATE_REVIEWER || c.reviewer || 'auto', author: v.author || process.env.REVIEW_GATE_AUTHOR || c.author || 'claude',
     model: v.model || process.env.REVIEW_GATE_MODEL || c.model || undefined, intent: v.intent, testCmd: v['test-cmd'] || (cmd === 'review' && c.redGreenOnReview ? c.testCmd : undefined) || undefined,
-    block: !!v.block || !!c.block, noLint: !!v['no-lint'], maxDiffChars: Number(v['max-diff-chars'] || c.maxDiffChars || 120000), maxTurns: Number(v['max-turns'] || 25),
+    block: !!v.block || !!c.block, noLint: !!v['no-lint'], maxDiffChars: Number(v['max-diff-chars'] || c.maxDiffChars || 120000), maxTurns: Number(v['max-turns'] || c.maxTurns || 40),
     sandbox: v.sandbox || process.env.REVIEW_GATE_CODEX_SANDBOX || c.codexSandbox || 'read-only', allowedTools: v['allowed-tools'] || 'Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*)',
     label: v.label || '', out: v.out || process.env.REVIEW_GATE_OUT || undefined, cfg: c,
   };
