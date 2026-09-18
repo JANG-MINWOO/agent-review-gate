@@ -6,6 +6,8 @@
 //                      [--model M] [--intent FILE] [--test-cmd CMD] [--block] [--json] [--label L] [--no-lint] [--out DIR]
 //   review-gate lint-tests [--base R] [--head R|--worktree] [--json]
 //   review-gate red-green --test-cmd CMD [--base R] [--head R|--worktree] [--json]
+//   review-gate audit [--json] [--run-tests] [--top N]    test-health inventory of the whole repo (feeds /review-gate:audit)
+//   review-gate pin-check --test T --target S [--cmd C]   does test T fail when module S is blanked? (rejects hollow tests)
 //   review-gate probe [--ask] [--model M]                 which reviewer CLIs exist (and answer)
 //   review-gate phase [test|implement]                    TDD phase (implement = test files locked by the hook)
 //   review-gate guard-tests | on-stop                     hook entry points (read hook JSON on stdin)
@@ -19,7 +21,7 @@ const spec = {
   repo: { type: 'string' }, base: { type: 'string' }, head: { type: 'string' }, worktree: { type: 'boolean' }, reviewer: { type: 'string' }, author: { type: 'string' },
   model: { type: 'string' }, intent: { type: 'string' }, 'test-cmd': { type: 'string' }, block: { type: 'boolean' }, json: { type: 'boolean' }, label: { type: 'string' },
   'no-lint': { type: 'boolean' }, 'max-diff-chars': { type: 'string' }, 'max-turns': { type: 'string' }, sandbox: { type: 'string' }, 'allowed-tools': { type: 'string' },
-  out: { type: 'string' }, target: { type: 'string' }, ask: { type: 'boolean' }, codex: { type: 'boolean' }, ci: { type: 'boolean' }, 'no-claude': { type: 'boolean' }, set: { type: 'string', multiple: true },
+  out: { type: 'string' }, target: { type: 'string' }, 'run-tests': { type: 'boolean' }, top: { type: 'string' }, test: { type: 'string' }, target: { type: 'string' }, cmd: { type: 'string' }, ask: { type: 'boolean' }, codex: { type: 'boolean' }, ci: { type: 'boolean' }, 'no-claude': { type: 'boolean' }, set: { type: 'string', multiple: true },
 };
 let args; try { args = parseArgs({ args: rest, options: spec, allowPositionals: true }); } catch (e) { console.error('review-gate: ' + e.message); process.exit(64); }
 const v = args.values, pos = args.positionals;
@@ -71,13 +73,29 @@ function opts() {
       const hookIn = readStdin(); let hook = {}; try { hook = JSON.parse(hookIn); } catch {}
       if (hook.stop_hook_active) process.exit(0);   // do not loop
       const o = opts(); const c = o.cfg; if (c.onStop === 'off') process.exit(0);
-      const { lintTests } = require('../src/lint'); let [base] = resolveRange(o.repo, o.base, 'HEAD');
+      const { lintTests } = require('../src/lint'); const { worktreeDiffHash } = require('../src/git'); let [base] = resolveRange(o.repo, o.base, 'HEAD');
       const lt = lintTests(o.repo, base, 'WORKTREE'); const msgs = [];
       if (lt.findings.length) msgs.push('review-gate test-integrity: ' + lt.findings.map(x => `${x.level} ${x.file}: ${x.msg}`).join('; '));
-      if (c.onStop === 'review') { const { review, format } = require('../src/review'); const res = review(Object.assign({}, o, { worktree: true })); msgs.push(format(res)); if (res.blocking && c.block) { console.error(msgs.join('\n')); process.exit(2); } }
-      else if (lt.tests_changed || lt.findings.length) msgs.push('review-gate: run `/review` (or `npx review-gate review --worktree`) before you finish.');
+      // unreviewed code changes? compare the working-tree fingerprint with the last worktree review in the ledger
+      const wt = worktreeDiffHash(o.repo, base); let reviewed = false;
+      if (wt.hash) { try { const lines = fs.readFileSync(path.join(o.out || path.join(o.repo, '.review-gate'), 'reviews.jsonl'), 'utf8').trim().split('\n'); reviewed = lines.some(l => { try { return JSON.parse(l).diff_hash === wt.hash; } catch { return false; } }); } catch {} }
+      const rg = `${process.env.REVIEW_GATE_CMD || 'npx --no-install review-gate'}${o.repo !== repoRoot('.') ? ' --repo ' + JSON.stringify(path.relative(process.cwd(), o.repo)) : ''}`;
+      if (c.onStop === 'review' && wt.hash && !reviewed) { const { review, format } = require('../src/review'); const res = review(Object.assign({}, o, { worktree: true })); msgs.push(format(res)); if (res.blocking && c.block) { console.error(msgs.join('\n')); process.exit(2); } }
+      else if (c.onStop === 'gate' && wt.hash && !reviewed) { msgs.push(`review-gate: ${wt.files} code file(s) changed since the last review — not done yet. Run \`${rg} review --worktree\`, act on the findings, then finish.`); console.error(msgs.join('\n')); process.exit(2); }
+      else if (wt.hash && !reviewed) msgs.push(`review-gate: ${wt.files} code file(s) changed and not yet reviewed — run \`${rg} review --worktree\` before you finish.`);
       if (msgs.length) console.error(msgs.join('\n'));
       process.exit(lt.level === 'hard' && c.block ? 2 : 0);
+    }
+    if (cmd === 'pin-check') {
+      const { pinCheck } = require('../src/pincheck'); const repo = repoRoot(v.repo || '.');
+      if (!v.test || !v.target) { console.error('pin-check: --test <file> --target <file> required'); process.exit(64); }
+      const r = pinCheck(repo, v.test, v.target, { cmd: v.cmd });
+      if (v.json) console.log(JSON.stringify(r, null, 1)); else console.log(`pin-check: ${r.verdict} — ${r.note || ''}` + (r.blanked_fails != null ? ` (blanked: ${r.blanked_fails ? 'fails' : 'PASSES'} ${r.blanked_seconds}s · restored: ${r.restored_passes ? 'passes' : 'FAILS'} ${r.restored_seconds}s)` : ''));
+      process.exit(r.verdict === 'pinned' ? 0 : 2);
+    }
+    if (cmd === 'audit') {
+      const { audit, format } = require('../src/audit'); const repo = repoRoot(v.repo || '.'); const a = audit(repo, { runTests: !!v['run-tests'], top: Number(v.top || 60) });
+      if (v.json) console.log(JSON.stringify(a, null, 1)); else console.log(format(a)); process.exit(0);
     }
     if (cmd === 'init') { const { init } = require('../src/init'); const set = {}; for (const kv of v.set || []) { const [k, ...r] = kv.split('='); set[k] = r.join('=') === 'true' ? true : r.join('=') === 'false' ? false : r.join('='); } const r = init({ repo: v.repo, target: v.target, cwd: '.', codex: !!v.codex, ci: !!v.ci, noClaude: !!v['no-claude'], set }); console.log('review-gate initialised in ' + r.repo + '\n  ' + r.done.join('\n  ') + `\n  test command: ${r.cfg.testCmd || '(none detected — set testCmd in .review-gate/config.json)'} · reviewer: ${r.cfg.reviewer} · on stop: ${r.cfg.onStop}`); process.exit(0); }
     console.error(fs.readFileSync(__filename, 'utf8').split('\n').filter(l => l.startsWith('//')).map(l => l.slice(3)).join('\n')); process.exit(cmd ? 64 : 0);

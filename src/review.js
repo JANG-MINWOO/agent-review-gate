@@ -3,7 +3,7 @@
 // Ledger: <repo>/.review-gate/reviews.jsonl (append-only; commit it — it is how you later count which findings were real).
 // Runs:   <repo>/.review-gate/runs/<ts>-<sha>/{packet.md,raw.txt,verdict.json} (gitignored audit trail).
 const fs = require('node:fs'), path = require('node:path');
-const { repoRoot, resolveRange, headSha, git } = require('./git');
+const { repoRoot, resolveRange, headSha, git, worktreeDiffHash } = require('./git');
 const { lintTests } = require('./lint');
 const { redGreen } = require('./redgreen');
 const { pickReviewer, buildPacket, extractJson, runClaude, runCodex } = require('./reviewer');
@@ -44,6 +44,7 @@ function review(o) {
     meta: r.meta, duration_s: duration, packet: pmeta, checks, verdict: verdict.verdict, summary: verdict.summary || '',
     n_fact: verdict.findings.filter(f => f.kind === 'fact').length, n_taste: verdict.findings.filter(f => f.kind === 'taste').length,
     findings: verdict.findings, good: verdict.good, checked: verdict.checked, run_dir: path.relative(home, runDir), label: o.label || '',
+    diff_hash: head === 'WORKTREE' ? worktreeDiffHash(repo, base).hash : null,
   };
   const led = home; fs.mkdirSync(led, { recursive: true });
   const gi = path.join(led, '.gitignore'); if (!fs.existsSync(gi)) fs.writeFileSync(gi, 'runs/\nphase\n');

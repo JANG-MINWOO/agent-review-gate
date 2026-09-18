@@ -59,4 +59,15 @@ function fileAt(repo, ref, p) {
 function addedLines(repo, base, head, p) {
   return diffText(repo, base, head, [p]).split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++')).map(l => l.slice(1)).join('\n');
 }
-module.exports = { run, git, repoRoot, isTestPath, isRunnerFile, resolveRange, diffText, diffStat, changedFiles, headSha, fileAt, addedLines };
+const CODE_EXT = /\.(js|jsx|mjs|cjs|ts|tsx|py|go|rs|java|kt|rb|php|cs|swift|vue|svelte)$/;
+// Fingerprint of the code changes in the working tree vs base — the Stop gate compares it with the last review's fingerprint.
+function worktreeDiffHash(repo, base) {
+  const crypto = require('node:crypto');
+  const files = changedFiles(repo, base, 'WORKTREE').filter(f => CODE_EXT.test(f.path) || isTestPath(f.path) || isRunnerFile(f.path));
+  if (!files.length) return { hash: null, files: 0 };
+  const h = crypto.createHash('sha1');
+  h.update(diffText(repo, base, 'WORKTREE', files.map(f => f.path)));
+  for (const f of files) { if (f.status === 'A') { const c = fileAt(repo, 'WORKTREE', f.path); if (c != null) h.update('\0' + f.path + '\0' + c); } }
+  return { hash: h.digest('hex').slice(0, 16), files: files.length };
+}
+module.exports = { run, git, repoRoot, isTestPath, isRunnerFile, resolveRange, diffText, diffStat, changedFiles, headSha, fileAt, addedLines, worktreeDiffHash };

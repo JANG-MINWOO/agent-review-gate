@@ -49,6 +49,8 @@ when only one is (no memory, no rationalisation). Which of the two catches more 
 - `red-green` — the check that a test actually *pins* the change: in a throwaway worktree, base + **only the test
   changes** must fail; head must pass. `not-red` (the new tests already pass on the old code) is the single most common
   way "TDD" silently becomes "tests written after the fact".
+- `pin-check --test T --target S` — blanks module S and runs test T: it must fail; restored, it must pass. The acceptance rule for
+  backfilled characterisation tests (a test that survives its target being emptied tests nothing).
 - `phase test | implement` + `guard-tests` hook — the spec (tests) is open in the test phase and **locked** in the implement
   phase. The hook blocks the editing tools *and* the usual shell bypasses (`sed -i`, `tee`, `>` into a test path). Changing
   the spec is allowed — it just has to be a visible, reviewed act (`phase test`), not a side effect of getting to green.
@@ -61,6 +63,23 @@ so you can later count which findings turned out to be real — the number that 
 
 Everything else — the `init` that wires hooks into `.claude/settings.json`, the `/review` command, the Codex skill, the CI
 workflow, the Claude Code plugin manifest — is packaging around those three.
+
+## Using it without memorising anything
+
+You talk to your agent; the package supplies the rules and the tools. `init` installs three slash commands and a short
+rules section into the project's `CLAUDE.md`, so plain requests work:
+
+| You say | What happens |
+|---|---|
+| 「프로젝트 점검해줘」 / `/review-gate:audit` | `review-gate audit` measures the whole repo (runner, test↔source map, untested modules by size, weak tests, CI); the agent judges what is core and writes `docs/test-audit.md`: current state, gaps ranked by risk, must-do list, infrastructure to add, what not to test |
+| 「점검 토대로 테스트 업데이트해줘」 / `/review-gate:backfill` | the agent writes the missing tests one module at a time; every new test must pass **and** fail when its target module is blanked (`pin-check`) — hollow tests are rejected |
+| 「~해줘」 (normal feature work) | the agent switches `phase test` → writes/adjusts tests → `phase implement` (tests locked) → implements → runs the independent review → fixes or refutes findings → red→green → commits (and opens a PR with `gh` when asked) |
+| 「feature/x 브랜치 리뷰해줘」 / 「PR 12 리뷰해줘」 / `/review` | the agent resolves base/head/intent itself (branch list, `gh pr view`, your words) and runs the review — no flags to type |
+
+Two enforcement points make the rules real: the PreToolUse hook refuses test edits in the implement phase, and the Stop
+hook (`onStop: "gate"`, the default) refuses to let the session finish while there are code changes newer than the last
+review — the agent is told the exact command to run. `onStop: "checks"` downgrades that to a reminder; `"review"` runs the
+review inline; `"off"` disables it.
 
 ## How it works
 
@@ -102,6 +121,8 @@ npx review-gate review --base main --head feat --reviewer codex --model gpt-6-as
 npx review-gate lint-tests --worktree
 npx review-gate red-green --test-cmd "pytest -q"
 npx review-gate phase implement              # lock tests; `phase test` to unlock
+npx review-gate audit [--json] [--run-tests] # whole-repo test-health inventory
+npx review-gate pin-check --test tests/x.test.ts --target src/x.ts
 ```
 
 `init` is idempotent — run it again after `npm update agent-review-gate`. **Restart Claude Code after `init`** — hooks and slash commands are read at session start (`/hooks` should list the two review-gate entries).

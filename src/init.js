@@ -30,7 +30,7 @@ function init(o) {
   const repo = repoRoot(target || o.repo || '.'); const dir = path.join(repo, '.review-gate'); fs.mkdirSync(dir, { recursive: true });
   const rel = target ? path.relative(cwd, repo) : ''; const R = rel ? ` --repo ${JSON.stringify(rel)}` : '';
   const home = target ? cwd : repo;   // where hooks/commands are written
-  const cfg = Object.assign({ reviewer: 'auto', author: 'claude', testCmd: detectTestCmd(repo), onStop: 'checks', block: false, maxDiffChars: 120000, model: null, codexSandbox: 'read-only' }, readConfig(repo), o.set || {});
+  const cfg = Object.assign({ reviewer: 'auto', author: 'claude', testCmd: detectTestCmd(repo), onStop: 'gate', block: false, maxDiffChars: 120000, model: null, codexSandbox: 'read-only' }, readConfig(repo), o.set || {});
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(cfg, null, 2) + '\n');
   const gi = path.join(dir, '.gitignore'); if (!fs.existsSync(gi)) fs.writeFileSync(gi, 'runs/\nphase\n');
   const done = ['.review-gate/config.json'];
@@ -44,10 +44,17 @@ function init(o) {
       Stop: cfg.onStop === 'off' ? [] : [{ hooks: [{ type: 'command', command: `${NPX} on-stop${R}`, timeout: cfg.onStop === 'review' ? 1800 : 600 }] }],
     };
     fs.writeFileSync(sp, JSON.stringify(mergeHooks(settings, ours), null, 2) + '\n'); done.push(path.relative(cwd, sp) + ' (hooks merged' + (rel ? `, targeting ${rel}` : '') + ')');
-    const cdir = path.join(sdir, 'commands'); fs.mkdirSync(cdir, { recursive: true });
-    let cmdText = fs.readFileSync(path.join(__dirname, '..', 'adapters', 'claude-plugin', 'commands', 'review.md'), 'utf8');
-    if (rel) cmdText = cmdText.replace('npx --no-install review-gate review --worktree', `${NPX} review --worktree${R}`);
-    fs.writeFileSync(path.join(cdir, 'review.md'), cmdText); done.push(path.relative(cwd, path.join(cdir, 'review.md')));
+    // slash commands: /review (natural language), /review-gate:audit, /review-gate:backfill — `__RG__` becomes the right invocation for this layout
+    const RG = `${NPX}${R}`; const srcCmds = path.join(__dirname, '..', 'adapters', 'claude-plugin', 'commands'); const cdir = path.join(sdir, 'commands');
+    const copyCmd = (from, to) => { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.writeFileSync(to, fs.readFileSync(from, 'utf8').split('__RG__').join(RG)); done.push(path.relative(cwd, to)); };
+    copyCmd(path.join(srcCmds, 'review.md'), path.join(cdir, 'review.md'));
+    for (const f of fs.readdirSync(path.join(srcCmds, 'review-gate'))) copyCmd(path.join(srcCmds, 'review-gate', f), path.join(cdir, 'review-gate', f));
+    // session rules: CLAUDE.md snippet between markers (idempotent) in the cwd project
+    const snippet = fs.readFileSync(path.join(__dirname, '..', 'adapters', 'claude-plugin', 'CLAUDE-snippet.md'), 'utf8').split('__RG__').join(RG);
+    const cm = path.join(home, 'CLAUDE.md'); let cur = ''; try { cur = fs.readFileSync(cm, 'utf8'); } catch {}
+    const re = /<!-- review-gate:start -->[\s\S]*?<!-- review-gate:end -->\n?/;
+    const next = re.test(cur) ? cur.replace(re, snippet) : (cur ? cur.replace(/\s*$/, '\n\n') : '') + snippet;
+    fs.writeFileSync(cm, next); done.push(path.relative(cwd, cm) + ' (review-gate section)');
   }
   if (o.codex) {
     const cdir = path.join(repo, '.codex'); fs.mkdirSync(cdir, { recursive: true });

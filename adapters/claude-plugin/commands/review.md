@@ -1,11 +1,19 @@
 ---
-description: Independent review of the current change by a fresh CLI session (review-gate)
+description: Independent review by a fresh CLI session — of the current work, a branch, or a PR. Say what to review in plain words.
+argument-hint: [nothing = current uncommitted work | "feature/x 브랜치" | "PR 12" | "main 대비 HEAD" | intent text]
 ---
-Run `npx --no-install review-gate review --worktree` (falls back to `npx review-gate` if not installed locally) and wait for it to finish.
+Review request: "$ARGUMENTS"
+
+Work out what to review — never ask the user for flags or file names:
+- No arguments → the uncommitted working tree: `__RG__ review --worktree`.
+- A branch name → `__RG__ review --base <merge-base with main/master> --head <branch>` (resolve the exact branch with `git branch --list`; if the user's spelling matches nothing, show the closest branch names and ask).
+- "PR N" → `gh pr view N --json baseRefName,headRefName,body` if `gh` is available; base = baseRefName, head = headRefName, intent = the PR body. Without `gh`, ask for the branch.
+- A description of the intent (what the change is supposed to do) → write it to a temp file and pass `--intent <file>`; otherwise the intent comes from commit messages automatically.
+If a test command is configured, add `--test-cmd "<cmd>"` so red→green runs too.
 
 Then act on the result:
-- For each `fact` finding: verify it yourself against the code. If it is right, fix it and say what changed. If it is wrong, say why in one sentence with evidence — do not fix things that are not broken.
+- Each `fact` finding: verify it against the code yourself. Right → fix it and say what changed. Wrong → say why in one sentence with evidence. Do not fix what is not broken.
 - `taste` findings: apply only if trivial and clearly better; otherwise leave them and say so.
-- If the verdict is `fail` or `unsure`, do not report the task as done until the fact findings are resolved or refuted.
-- If test-integrity or red→green reported a problem, that comes first: a weakened or non-pinning test is not a passing test.
-Report in this order: verdict, what you fixed, what you refuted (with evidence), what remains.
+- test-integrity or red→green problems come first — a weakened or non-pinning test is not a passing test.
+- After fixing fact findings, run the review again once; stop when it passes or when the remaining findings are ones you refuted with evidence.
+Report: verdict, what you fixed, what you refuted (with evidence), what remains. The ledger is `.review-gate/reviews.jsonl`.

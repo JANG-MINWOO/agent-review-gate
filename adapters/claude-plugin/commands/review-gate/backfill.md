@@ -1,0 +1,15 @@
+---
+description: Write the tests that docs/test-audit.md says are missing, with a pin check that rejects tests that don't actually test anything
+argument-hint: [optional scope, e.g. "only the top 3" or "src/server"]
+---
+Turn the audit into tests. Work through **Must create or update before feature work** in `docs/test-audit.md` (run `/review-gate:audit` first if the file does not exist), top to bottom, one module at a time. Respect `$ARGUMENTS` if a scope is given.
+
+For each module:
+1. `__RG__ phase test` (tests are the spec; the implement-phase lock is off while you write them).
+2. Read the module and its callers. Write tests for the behavior the audit named, in the project's existing test style and runner. Prefer real inputs over mocks; when a dependency must be faked, fake the boundary (network, clock, DB), not the module under test.
+3. Run the new test file with the project's runner. It must pass on the current code — these are characterization tests of existing behavior.
+4. Run `__RG__ pin-check --test <test file> --target <source file>`. This blanks the target module and re-runs the test: **it must fail**. If it still passes, the test is not pinning that module — fix the test (assert on real outputs), do not weaken it, and do not move on until pin-check reports `pinned`.
+5. Run the whole suite once (`npm test` or the audit's test command) to make sure nothing else broke.
+6. Update the audit file: move the item to a **Done** list with the test file path and the pin-check result.
+
+When the list is done (or the scope is exhausted): run `__RG__ phase implement`, run `__RG__ review --worktree` on the new tests (a fresh reviewer checks they assert real behavior and are not tautological), act on any `fact` findings, and report: tests added (file → module), pin-check results, suite status, what you skipped and why.
