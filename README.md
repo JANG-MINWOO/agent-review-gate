@@ -183,7 +183,7 @@ Config, ledger and phase go into `my-app/.review-gate/` (the repo that is review
 into `my-context/.claude/` (the project Claude Code actually reads), with `--repo my-app` baked into every command. The
 test lock then applies to `my-app`'s tests and leaves the context repo's own files alone. Running Claude Code inside
 `my-app` directly? Run a plain `npx review-gate init` there as well — both can coexist. Config lives in `.review-gate/config.json`
-(`reviewer`, `author`, `model`, `testCmd`, `onStop`: `checks` | `review` | `off`, `block`, `maxDiffChars`, `codexSandbox`,
+(`reviewer`, `author`, `model`, `testCmd`, `onStop`: `checks` | `review` | `off`, `block`, `maxDiffChars`, `codexSandbox` — `workspace-write` by default on macOS so the Codex reviewer can actually run the tests (its edits are undone afterwards, yours are kept), `read-only` on Linux,
 `redGreenOnReview`); environment overrides `REVIEW_GATE_REVIEWER|AUTHOR|MODEL|CODEX_SANDBOX|OUT`. `--out DIR` keeps the
 ledger and run artefacts outside the reviewed repo (pilots, CI artefacts).
 

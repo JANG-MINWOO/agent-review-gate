@@ -30,7 +30,7 @@ function init(o) {
   const repo = repoRoot(target || o.repo || '.'); const dir = path.join(repo, '.review-gate'); fs.mkdirSync(dir, { recursive: true });
   const rel = target ? path.relative(cwd, repo) : ''; const R = rel ? ` --repo ${JSON.stringify(rel)}` : '';
   const home = target ? cwd : repo;   // where hooks/commands are written
-  const cfg = Object.assign({ reviewer: 'auto', author: 'claude', testCmd: detectTestCmd(repo), onStop: 'gate', block: false, maxDiffChars: 120000, model: null, codexSandbox: 'read-only' }, readConfig(repo), o.set || {});
+  const cfg = Object.assign({ reviewer: 'auto', author: 'claude', testCmd: detectTestCmd(repo), onStop: 'gate', block: false, maxDiffChars: 120000, model: null, codexSandbox: process.platform === 'darwin' ? 'workspace-write' : 'read-only' }, readConfig(repo), o.set || {});   // macOS seatbelt: let the Codex reviewer run the tests (writes stay inside the repo and are undone afterwards); Linux read-only
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(cfg, null, 2) + '\n');
   const gi = path.join(dir, '.gitignore'); if (!fs.existsSync(gi)) fs.writeFileSync(gi, 'runs/\nphase\nstop-strikes.json\n');
   const done = ['.review-gate/config.json'];
