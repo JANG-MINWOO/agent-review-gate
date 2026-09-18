@@ -112,7 +112,8 @@ recorded as an error, never as a verdict; in `auto` mode the other CLI is tried 
 
 **The Stop gate's fingerprint is content-based**: `git add` or a commit of already-reviewed files does not look like a new change
 (it did in the first version — a session staged its reviewed tests and was sent to a third, identical review). The gate blocks at
-most three times per session, then lets the session stop while saying the change is unreviewed.
+most three times per session, then lets the session stop while saying the change is unreviewed. Fingerprints written by the first
+version do not match the new format, so the first stop after upgrading may ask for one more review of work that was already reviewed.
 
 CI runs the deterministic gates on every PR (`adapters/ci/review-gate.yml`); the model review in CI is opt-in once you
 have credentials there. **Review unit ≠ PR unit**: for a large PR, run `review` per commit range instead of splitting the

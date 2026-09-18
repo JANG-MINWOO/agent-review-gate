@@ -59,7 +59,11 @@ function runClaude(repo, packet, o) {
 function codexSandboxError(sandbox) {
   if (sandbox === 'danger-full-access') return null;
   const p = run('codex', ['sandbox', '--', 'true'], { timeout: 30000 });
-  return p.code === 0 ? null : ((p.err || p.out).trim().split('\n').pop() || `codex sandbox probe failed (rc=${p.code})`);
+  if (p.code === 0) return null;
+  // Only a recognisable sandbox failure counts. An unknown subcommand (older codex), a usage error or a platform quirk must not
+  // silently demote the Codex reviewer — in that case we proceed and rely on the post-hoc signature check.
+  const msg = (p.err || p.out).trim().split('\n').filter(Boolean).pop() || '';
+  return /bwrap|bubblewrap|landlock|seatbelt|sandbox-exec|sandbox/i.test(msg) && !/unrecognized|unexpected argument|usage:/i.test(msg) ? msg : null;
 }
 function runCodex(repo, packet, o) {
   const sb = codexSandboxError(o.sandbox || 'read-only');
