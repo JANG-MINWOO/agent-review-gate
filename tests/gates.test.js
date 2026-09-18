@@ -119,3 +119,15 @@ test('mcp: initialize / tools/list / tools/call over newline-delimited JSON-RPC,
   assert.strictEqual(replies[3].result.structuredContent.phase, 'implement');
   assert.strictEqual(replies[4].error.code, -32601);
 });
+
+test('env-check: a test that assumes a variable is absent is env-dependent (culprit bisected); an indifferent test is clean', () => {
+  const { envCheck } = require('../src/envcheck');
+  const repo = fixture();
+  write(repo, 'src/cfg.js', "module.exports = { url: () => process.env.APP_URL || 'https://prod', mode: () => process.env.APP_MODE || 'x', other: () => process.env.UNUSED_FLAG };\n");
+  write(repo, 'tests/cfg.test.js', "const assert = require('node:assert'); const test = (n, f) => f(); const { url } = require('../src/cfg');\ntest('prod url', () => { assert.strictEqual(url(), 'https://prod'); });\n");
+  write(repo, 'tests/run.js', "require('./add.test.js');\n");   // keep the suite runner out of it; we run single files
+  const bad = envCheck(repo, 'tests/cfg.test.js', { cmd: 'node {file}' });
+  assert.strictEqual(bad.verdict, 'env-dependent', JSON.stringify(bad)); assert.deepStrictEqual(bad.culprits, ['APP_URL']);
+  const good = envCheck(repo, 'tests/add.test.js', { cmd: 'node {file}' });
+  assert.strictEqual(good.verdict, 'clean', JSON.stringify(good));
+});

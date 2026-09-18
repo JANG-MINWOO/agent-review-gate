@@ -8,6 +8,7 @@
 //   review-gate red-green --test-cmd CMD [--base R] [--head R|--worktree] [--json]
 //   review-gate audit [--json] [--run-tests] [--top N]    test-health inventory of the whole repo (feeds /review-gate:audit)
 //   review-gate pin-check --test T --target S [--cmd C]   does test T fail when module S is blanked? (rejects hollow tests)
+//   review-gate env-check --test T [--vars A,B] [--cmd C]  does test T depend on env vars being ABSENT? (runs it with them set, bisects)
 //   review-gate probe [--ask] [--model M]                 which reviewer CLIs exist (and answer)
 //   review-gate phase [test|implement]                    TDD phase (implement = test files locked by the hook)
 //   review-gate guard-tests | on-stop                     hook entry points (read hook JSON on stdin)
@@ -22,7 +23,7 @@ const spec = {
   repo: { type: 'string' }, base: { type: 'string' }, head: { type: 'string' }, worktree: { type: 'boolean' }, reviewer: { type: 'string' }, author: { type: 'string' },
   model: { type: 'string' }, intent: { type: 'string' }, 'test-cmd': { type: 'string' }, block: { type: 'boolean' }, json: { type: 'boolean' }, label: { type: 'string' },
   'no-lint': { type: 'boolean' }, 'max-diff-chars': { type: 'string' }, 'max-turns': { type: 'string' }, sandbox: { type: 'string' }, 'allowed-tools': { type: 'string' },
-  out: { type: 'string' }, target: { type: 'string' }, 'run-tests': { type: 'boolean' }, top: { type: 'string' }, test: { type: 'string' }, target: { type: 'string' }, cmd: { type: 'string' }, ask: { type: 'boolean' }, codex: { type: 'boolean' }, ci: { type: 'boolean' }, 'no-claude': { type: 'boolean' }, set: { type: 'string', multiple: true },
+  out: { type: 'string' }, target: { type: 'string' }, 'run-tests': { type: 'boolean' }, vars: { type: 'string' }, top: { type: 'string' }, test: { type: 'string' }, target: { type: 'string' }, cmd: { type: 'string' }, ask: { type: 'boolean' }, codex: { type: 'boolean' }, ci: { type: 'boolean' }, 'no-claude': { type: 'boolean' }, set: { type: 'string', multiple: true },
 };
 let args; try { args = parseArgs({ args: rest, options: spec, allowPositionals: true }); } catch (e) { console.error('review-gate: ' + e.message); process.exit(64); }
 const v = args.values, pos = args.positionals;
@@ -102,6 +103,12 @@ function opts() {
       if (reviewed || !wt.hash) { if (strikes[sid]) { delete strikes[sid]; try { fs.writeFileSync(strikesFile, JSON.stringify(strikes)); } catch {} } }
       if (msgs.length) console.error(msgs.join('\n'));
       process.exit(lt.level === 'hard' && c.block ? 2 : 0);
+    }
+    if (cmd === 'env-check') {
+      const { envCheck } = require('../src/envcheck'); if (!v.test) { console.error('env-check: --test <file> required'); process.exit(64); }
+      const r = envCheck(v.repo || '.', v.test, { cmd: v.cmd, vars: v.vars ? v.vars.split(',') : null });
+      if (v.json) console.log(JSON.stringify(r, null, 1)); else console.log(`env-check: ${r.verdict} — ${r.note || ''}` + (r.candidates != null ? ` (${r.candidates} candidate variable(s))` : ''));
+      process.exit(r.verdict === 'clean' ? 0 : 2);
     }
     if (cmd === 'mcp') { require('../src/mcp').serve(); return; }   // MCP stdio server: claude mcp add review-gate -- npx review-gate mcp
     if (cmd === 'pin-check') {

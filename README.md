@@ -165,6 +165,7 @@ npx review-gate red-green --test-cmd "pytest -q"
 npx review-gate phase implement              # lock tests; `phase test` to unlock
 npx review-gate audit [--json] [--run-tests] # whole-repo test-health inventory
 npx review-gate pin-check --test tests/x.test.ts --target src/x.ts
+npx review-gate env-check --test tests/x.test.ts        # does the test assume env vars are ABSENT? (runs it with them set, bisects the culprit)
 ```
 
 `init` is idempotent — run it again after `npm update agent-review-gate`. **Restart Claude Code after `init`** — hooks and slash commands are read at session start (`/hooks` should list the two review-gate entries).
