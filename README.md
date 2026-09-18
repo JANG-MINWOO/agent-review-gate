@@ -121,6 +121,25 @@ PR into forty CI runs.
 
 ## Install and use
 
+Two install routes, same code:
+
+**A. Claude Code plugin (no npm, one command).** Inside Claude Code:
+
+```
+/plugin marketplace add JANG-MINWOO/agent-review-gate
+/plugin install review-gate@agent-review-gate        # pick "project" scope to enable it for this repository only
+```
+
+then restart the session. The plugin ships four skills — `/review-gate:audit`, `/review-gate:backfill`, `/review-gate:review`,
+`/review-gate:workflow` (the session rules) — and three hooks (SessionStart puts `review-gate` on the session's PATH, PreToolUse
+locks tests in the implement phase, Stop gates unreviewed changes). Plain-language requests work the same way as with route B:
+「프로젝트 점검해줘」, 「점검 토대로 테스트 업데이트해줘」, 「feature/x 브랜치 리뷰해줘」. Measured 2026-09-18 on a fresh clone with no
+`node_modules/agent-review-gate`: `review-gate probe` answered from the session shell, and the implement-phase lock refused an Edit of
+a test file with the expected message. Always-on context cost ≈ 350 tokens (`claude plugin details review-gate@agent-review-gate`).
+Use route B instead if you need the nested layout (`--target`), Codex hooks, or CI.
+
+**B. npm package (also CI, Codex, nested layouts):**
+
 ```
 npm i -D agent-review-gate
 npx review-gate init              # .review-gate/config.json · hooks merged into .claude/settings.json · .claude/commands/review.md
@@ -215,8 +234,14 @@ so our lock is a plain path rule plus shell-bypass patterns.
 ## Development
 
 ```
-npm test        # node:test on a fixture repository — lint signatures, red→green (ok / not-red / not-green / no-tests), guard
+npm test                       # node:test on a fixture repository — lint signatures, red→green, guard, worktree packets/fingerprint, plugin sync
+node scripts/build-plugin.js   # regenerate plugin/ (skills + hooks) after editing adapters/claude-plugin/ — the test suite fails if it is stale
+claude plugin validate .       # marketplace + plugin manifests
 ```
+
+Layout: `bin/` CLI (+ `bin/review-gate` shell entry used by the plugin), `src/` the gates, `lib/` rubric + verdict schema,
+`adapters/claude-plugin/` the single source of the slash commands and the CLAUDE.md snippet (npm route), `plugin/` the generated
+Claude Code plugin form, `.claude-plugin/` manifests (this repository is its own marketplace), `adapters/codex`, `adapters/ci`.
 
 MIT.
 

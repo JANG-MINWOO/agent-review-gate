@@ -94,7 +94,7 @@ function opts() {
       // unreviewed code changes? compare the working-tree fingerprint with the last worktree review in the ledger
       const wt = worktreeDiffHash(o.repo, base); let reviewed = false;
       if (wt.hash) { try { const lines = fs.readFileSync(path.join(o.out || path.join(o.repo, '.review-gate'), 'reviews.jsonl'), 'utf8').trim().split('\n'); reviewed = lines.some(l => { try { return JSON.parse(l).diff_hash === wt.hash; } catch { return false; } }); } catch {} }
-      const rg = `${process.env.REVIEW_GATE_CMD || 'npx --no-install review-gate'}${o.repo !== repoRoot('.') ? ' --repo ' + JSON.stringify(path.relative(process.cwd(), o.repo)) : ''}`;
+      const rg = `${process.env.REVIEW_GATE_CMD || (process.env.CLAUDE_PLUGIN_ROOT ? 'review-gate' : 'npx --no-install review-gate')}${o.repo !== repoRoot('.') ? ' --repo ' + JSON.stringify(path.relative(process.cwd(), o.repo)) : ''}`;
       if (c.onStop === 'review' && wt.hash && !reviewed) { const { review, format } = require('../src/review'); const res = review(Object.assign({}, o, { worktree: true })); msgs.push(format(res)); if (res.blocking && c.block) { console.error(msgs.join('\n')); process.exit(2); } }
       else if (c.onStop === 'gate' && wt.hash && !reviewed) { strike(); msgs.push(`review-gate: ${wt.files} code file(s) changed since the last review — not done yet. Run \`${rg} review --worktree\`, act on the findings, then finish.` + ((strikes[sid] || 0) >= 3 ? ' (third block — the next stop will be allowed; say plainly that the change is unreviewed)' : '')); console.error(msgs.join('\n')); process.exit(2); }
       else if (wt.hash && !reviewed) msgs.push(`review-gate: ${wt.files} code file(s) changed and not yet reviewed — run \`${rg} review --worktree\` before you finish.`);

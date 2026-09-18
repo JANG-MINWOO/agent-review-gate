@@ -1,0 +1,12 @@
+{
+  "name": "review-gate",
+  "version": "0.1.0",
+  "description": "Independent code review by a fresh CLI session (claude -p / codex exec) plus deterministic TDD gates: test audit + backfill with pin-check, test-file lock during implementation, test-integrity lint, red→green verifier, Stop gate on unreviewed changes. Zero dependencies; the same code as the npm package.",
+  "author": { "name": "JANG-MINWOO", "url": "https://github.com/JANG-MINWOO/agent-review-gate" },
+  "homepage": "https://github.com/JANG-MINWOO/agent-review-gate",
+  "repository": "https://github.com/JANG-MINWOO/agent-review-gate",
+  "license": "MIT",
+  "keywords": ["code-review", "tdd", "hooks", "quality-gate", "codex", "claude-code"],
+  "skills": "./plugin/skills/",
+  "hooks": "./plugin/hooks.json"
+}

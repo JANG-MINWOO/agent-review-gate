@@ -1,0 +1,15 @@
+{
+  "name": "agent-review-gate",
+  "owner": { "name": "JANG-MINWOO", "url": "https://github.com/JANG-MINWOO" },
+  "metadata": { "description": "review-gate: independent AI code review + deterministic TDD gates for Claude Code and Codex", "version": "0.1.0" },
+  "plugins": [
+    {
+      "name": "review-gate",
+      "source": "./",
+      "description": "Independent code review by a fresh CLI session plus deterministic TDD gates (audit, backfill with pin-check, test lock, test-integrity lint, red→green, Stop gate).",
+      "version": "0.1.0",
+      "category": "development",
+      "keywords": ["code-review", "tdd", "quality-gate"]
+    }
+  ]
+}

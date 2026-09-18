@@ -1,0 +1,4 @@
+#!/bin/sh
+# Shell entry for the Claude Code plugin form: the plugin's SessionStart hook puts this directory on the session's PATH,
+# so `review-gate …` works in the agent's shell without an npm install. (npm users get the same name via package.json "bin".)
+exec node "$(dirname "$0")/review-gate.js" "$@"

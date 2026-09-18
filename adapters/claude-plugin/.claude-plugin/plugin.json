@@ -1,8 +1,0 @@
-{
-  "name": "review-gate",
-  "description": "Independent code review by a fresh CLI session (claude -p / codex exec) plus deterministic TDD gates: test-integrity lint, red→green verifier, test-file lock during implementation.",
-  "version": "0.1.0",
-  "author": { "name": "JANG-MINWOO" },
-  "commands": "./commands",
-  "hooks": "./hooks/hooks.json"
-}
