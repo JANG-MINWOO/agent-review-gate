@@ -6,7 +6,7 @@ Turn the audit into tests. Work through **Must create or update before feature w
 
 For each module:
 1. `__RG__ phase test` (tests are the spec; the implement-phase lock is off while you write them).
-2. Read the module and its callers. Write tests for the behavior the audit named, in the project's existing test style and runner. Prefer real inputs over mocks; when a dependency must be faked, fake the boundary (network, clock, DB), not the module under test.
+2. Read the module and its callers. Write tests for the behavior the audit named, in the project's existing test style and runner. Prefer real inputs over mocks; when a dependency must be faked, fake the boundary (network, clock, DB), not the module under test. Do not change production code to make it testable unless there is no test-side way (a `__mocks__` redirect, dependency injection through an existing seam); if you must, keep it minimal, name it in the commit message and the report — it is production change riding in a test commit, and the reviewer must see it as such.
 3. Run the new test file with the project's runner. It must pass on the current code — these are characterization tests of existing behavior.
 4. Run `__RG__ pin-check --test <test file> --target <source file>`. This blanks the target module and re-runs the test: **it must fail**. If it still passes, the test is not pinning that module — fix the test (assert on real outputs), do not weaken it, and do not move on until pin-check reports `pinned`.
 5. Run the whole suite once (`npm test` or the audit's test command) to make sure nothing else broke.
