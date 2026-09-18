@@ -107,7 +107,7 @@ function opts() {
     if (cmd === 'pin-check') {
       const { pinCheck } = require('../src/pincheck'); const repo = repoRoot(v.repo || '.');
       if (!v.test || !v.target) { console.error('pin-check: --test <file> --target <file> required'); process.exit(64); }
-      const r = pinCheck(repo, v.test, v.target, { cmd: v.cmd });
+      const r = pinCheck(v.repo || '.', v.test, v.target, { cmd: v.cmd });   // pass the raw dir: pin-check resolves paths against cwd first (monorepos)
       if (v.json) console.log(JSON.stringify(r, null, 1)); else console.log(`pin-check: ${r.verdict} — ${r.note || ''}` + (r.blanked_fails != null ? ` (blanked: ${r.blanked_fails ? 'fails' : 'PASSES'} ${r.blanked_seconds}s · restored: ${r.restored_passes ? 'passes' : 'FAILS'} ${r.restored_seconds}s)` : ''));
       process.exit(r.verdict === 'pinned' ? 0 : 2);
     }
