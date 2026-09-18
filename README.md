@@ -140,6 +140,12 @@ so our lock is a plain path rule plus shell-bypass patterns.
 - Each part rests on published evidence: test-hacking signatures (TDFlow's table of 13), independent-context review
   beating self-review, "silence is better than noise" (GitHub's own numbers: the agent says nothing in 29% of reviews),
   hooks over prompts for anything that must fire every time.
+- **First pilot (2026-09-18, 10 agent-written branches × 2 reviewers, 2 clean controls; answer key = independent cross-reviews; findings judged by hand):**
+  21 fact findings, **0 wrong** — the fact/evidence contract held; both reviewers stayed silent on the clean controls. The other-model reviewer
+  found defects in 5/5 branches written by the first model but passed 4/5 branches written by its own model with zero findings (the answer key
+  had defects in all four) — the "same model, same blind spots" hypothesis showed up in the sample, which is why `auto` prefers the other CLI.
+  The first-model reviewer found 8 answer-key defects but said "pass" 9 times out of 10, twice with a medium-severity finding in hand — so the
+  tool now forces `fail` whenever a medium/high fact finding is present. Small sample; measure on your own repo.
 - **Not shown:** that the combination raises code quality on your repo. There is no controlled experiment for the whole
   pipeline, ours included. The first thing we measured says why the ledger matters: on the same branch, one reviewer
   (a small model) returned `pass` with no findings in 138 s; the other (a frontier model) returned `fail` with two

@@ -32,6 +32,10 @@ function review(o) {
   try { verdict = extractJson(r.text); } catch (e) { return { error: `reviewer (${reviewer}) returned no parsable verdict (rc=${r.code}): ${e.message}`, tail: (r.text || '').slice(-800), code: 1, runDir }; }
   verdict.findings = verdict.findings || []; verdict.good = verdict.good || []; verdict.checked = verdict.checked || [];
   if (!['pass', 'fail', 'unsure'].includes(verdict.verdict)) verdict.verdict = 'unsure';
+  // Verdict calibration (pilot 2026-09-18, 10 branches × 2 reviewers): one reviewer wrote medium-severity fact findings and still said "pass"
+  // in 2 of 10 runs. A medium/high fact finding IS the verdict — the reviewer's summary word does not get to soften it.
+  const seriousFact = verdict.findings.some(f => f.kind === 'fact' && ['medium', 'high'].includes(f.severity));
+  if (seriousFact && verdict.verdict === 'pass') { verdict.reviewer_verdict = 'pass'; verdict.verdict = 'fail'; verdict.summary = '[calibrated: pass → fail because of a medium/high fact finding] ' + (verdict.summary || ''); }
   const rec = {
     ts: new Date().toISOString(), repo: path.basename(repo), base, head, head_sha: headSha(repo, head), reviewer, author: o.author || 'claude', mode: o.reviewer || 'auto',
     meta: r.meta, duration_s: duration, packet: pmeta, checks, verdict: verdict.verdict, summary: verdict.summary || '',

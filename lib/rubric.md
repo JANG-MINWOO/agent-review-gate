@@ -4,7 +4,7 @@ You have read-only access to the repository in the current directory (use it: op
 Judge the change against the stated intent. Verdict first, then findings.
 
 Rules
-1. Verdict is one of: "pass" (ship it), "fail" (a fact-level problem must be fixed before merge), "unsure" (you could not verify something that matters — say what).
+1. Verdict is one of: "pass" (ship it), "fail" (a fact-level problem must be fixed before merge), "unsure" (you could not verify something that matters — say what). Consistency rule: if you report any fact finding of severity medium or high, the verdict is "fail" — do not write a medium finding and then say pass.
 2. Every finding is either "fact" or "taste".
    - fact = verifiable: a behavior that is wrong, a test that does not test what it claims, a missing case the intent requires, duplicated logic that already exists (name the existing symbol and file), a security or data-loss risk. Give file, line, the claim, and evidence (how to reproduce, which input breaks it, or which existing test/function proves it).
    - taste = style, naming, structure preferences. Label them and keep them short. Taste never makes the verdict "fail".
