@@ -101,3 +101,21 @@ test('reviewer role: the guard stands down for REVIEW_GATE_ROLE=reviewer; enviro
   assert.ok(environmentFailure({ raw: '' }, { verdict: 'unsure', summary: 'inspection failed because the sandbox could not start (bwrap: Operation not permitted)', findings: [] }));
   assert.strictEqual(environmentFailure({ raw: 'ran 12 commands fine' }, { verdict: 'pass', summary: 'all good', findings: [] }), null);
 });
+
+test('mcp: initialize / tools/list / tools/call over newline-delimited JSON-RPC, several messages in one chunk', async () => {
+  const { serve, TOOLS } = require('../src/mcp'); const { PassThrough } = require('node:stream');
+  const repo = fixture(); write(repo, 'src/add.js', "'use strict';\nmodule.exports = { add: (a, b) => a + b, mul: (a, b) => a * b };\n");
+  const inp = new PassThrough(), out = new PassThrough(); let text = ''; out.on('data', c => { text += c; });
+  serve(inp, out);
+  const msgs = [{ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }, { jsonrpc: '2.0', method: 'notifications/initialized' }, { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'lint_tests', arguments: { repo, worktree: true } } }, { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'phase', arguments: { repo, set: 'implement' } } }, { jsonrpc: '2.0', id: 5, method: 'nope' }];
+  inp.write(msgs.map(m => JSON.stringify(m)).join('\n') + '\n');
+  await new Promise(r => setTimeout(r, 200));
+  const replies = text.trim().split('\n').map(l => JSON.parse(l));
+  assert.strictEqual(replies.length, 5, 'one reply per request (none for the notification)');
+  assert.strictEqual(replies[0].result.serverInfo.name, 'review-gate');
+  assert.deepStrictEqual(replies[1].result.tools.map(t => t.name), TOOLS.map(t => t.name));
+  assert.strictEqual(replies[2].result.structuredContent.level, 'clean');
+  assert.strictEqual(replies[3].result.structuredContent.phase, 'implement');
+  assert.strictEqual(replies[4].error.code, -32601);
+});

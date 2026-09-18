@@ -11,6 +11,7 @@
 //   review-gate probe [--ask] [--model M]                 which reviewer CLIs exist (and answer)
 //   review-gate phase [test|implement]                    TDD phase (implement = test files locked by the hook)
 //   review-gate guard-tests | on-stop                     hook entry points (read hook JSON on stdin)
+//   review-gate mcp                                       MCP server over stdio (tools: review, lint_tests, red_green, audit, pin_check, phase)
 const fs = require('node:fs'), path = require('node:path');
 const { parseArgs } = require('node:util');
 const { repoRoot, resolveRange } = require('../src/git');
@@ -102,6 +103,7 @@ function opts() {
       if (msgs.length) console.error(msgs.join('\n'));
       process.exit(lt.level === 'hard' && c.block ? 2 : 0);
     }
+    if (cmd === 'mcp') { require('../src/mcp').serve(); return; }   // MCP stdio server: claude mcp add review-gate -- npx review-gate mcp
     if (cmd === 'pin-check') {
       const { pinCheck } = require('../src/pincheck'); const repo = repoRoot(v.repo || '.');
       if (!v.test || !v.target) { console.error('pin-check: --test <file> --target <file> required'); process.exit(64); }

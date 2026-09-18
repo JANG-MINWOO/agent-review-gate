@@ -138,6 +138,16 @@ locks tests in the implement phase, Stop gates unreviewed changes). Plain-langua
 a test file with the expected message. Always-on context cost ≈ 350 tokens (`claude plugin details review-gate@agent-review-gate`).
 Use route B instead if you need the nested layout (`--target`), Codex hooks, or CI.
 
+**C. MCP server (for agents that are not Claude Code — Cursor, Codex `mcp_servers`, your own harness):**
+
+```
+claude mcp add review-gate -- npx --no-install review-gate mcp      # or any MCP client: command "npx", args ["review-gate","mcp"]
+```
+
+Tools: `review`, `lint_tests`, `red_green`, `audit`, `pin_check`, `phase` — the same code, newline-delimited JSON-RPC over stdio, no
+dependencies. MCP cannot enforce anything (hooks do that); it is the door another agent calls through. Verified 2026-09-18: Claude Code
+connected with `--mcp-config` and got `clean` back from `lint_tests`.
+
 **B. npm package (also CI, Codex, nested layouts):**
 
 ```
